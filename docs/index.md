@@ -95,7 +95,7 @@ Other methods (`azure_identity`, `token_file`, `token_command`, `token`) are des
 
 Optional:
 
-- `auth` (Block, Optional) How to obtain the bearer token sent to the gate. Exactly one method. Without this block, `EURODNS_GATE_TOKEN` or `EURODNS_GATE_TOKEN_FILE` is used. (see [below for nested schema](#nestedblock--gate--auth))
+- `auth` (Block, Optional) How to obtain the bearer token sent to the gate. Exactly one method, plus optionally `azure_devops`, which takes precedence inside an Azure DevOps job. Without this block, `EURODNS_GATE_TOKEN` or `EURODNS_GATE_TOKEN_FILE` is used. (see [below for nested schema](#nestedblock--gate--auth))
 - `url` (String) eurodns-gate base URL. Env: `EURODNS_GATE_URL`.
 
 <a id="nestedblock--gate--auth"></a>
@@ -104,6 +104,7 @@ Optional:
 Optional:
 
 - `aws_web_identity` (Block, Optional) Get a JWT signed by AWS STS (`sts:GetWebIdentityToken`, IAM outbound identity federation) for the current AWS principal, from the default AWS credential chain. (see [below for nested schema](#nestedblock--gate--auth--aws_web_identity))
+- `azure_devops` (Block, Optional) Inside an Azure DevOps job, get the OIDC token Azure DevOps issues for a service connection (`SYSTEM_OIDCREQUESTURI`, with `SYSTEM_ACCESSTOKEN` mapped into the step environment). Outside a job, for example on a workstation, the other method of this block is used, so the same configuration runs in the pipeline and locally. (see [below for nested schema](#nestedblock--gate--auth--azure_devops))
 - `azure_identity` (Block, Optional) Get a Microsoft Entra ID access token for the gate application: environment credentials, AKS workload identity, managed identity, then Azure CLI (so `AzureCLI@2` in Azure DevOps works). (see [below for nested schema](#nestedblock--gate--auth--azure_identity))
 - `token` (String, Sensitive) Static token (OIDC JWT or gate virtual key).
 - `token_command` (List of String) Command (argv) printing the token on stdout, run again when the token expires.
@@ -118,6 +119,14 @@ Optional:
 - `duration_seconds` (Number) Requested token lifetime.
 - `region` (String) STS region. Default: from the AWS configuration.
 - `signing_algorithm` (String) `RS256` (default) or `ES384`.
+
+
+<a id="nestedblock--gate--auth--azure_devops"></a>
+### Nested Schema for `gate.auth.azure_devops`
+
+Optional:
+
+- `service_connection_id` (String) Id of the service connection the token is issued for. Required in this block.
 
 
 <a id="nestedblock--gate--auth--azure_identity"></a>

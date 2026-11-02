@@ -33,7 +33,7 @@ func TestMain(m *testing.M) {
 }
 
 func clearEnv(t *testing.T) {
-	for _, k := range []string{envAppID, envAPIKey, envBaseURL, envGateURL, envGateToken, envGateTokenFile} {
+	for _, k := range []string{envAppID, envAPIKey, envBaseURL, envGateURL, envGateToken, envGateTokenFile, envADOOIDCRequestURI, envADOAccessToken} {
 		t.Setenv(k, "")
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"time"
 
@@ -38,12 +39,16 @@ type eurodnsProvider struct {
 	// newSTS is replaced in tests.
 	newSTS             func(region string) func(ctx context.Context) (stsTokenAPI, error)
 	newAzureCredential func(azureIdentityConfig) (azcore.TokenCredential, error)
+	adoHTTP            *http.Client
 }
 
 // New returns the provider factory.
 func New(version string) func() provider.Provider {
 	return func() provider.Provider {
-		return &eurodnsProvider{version: version, newSTS: defaultSTSClient, newAzureCredential: defaultAzureCredential}
+		return &eurodnsProvider{
+			version: version, newSTS: defaultSTSClient, newAzureCredential: defaultAzureCredential,
+			adoHTTP: &http.Client{Timeout: 30 * time.Second},
+		}
 	}
 }
 
@@ -68,6 +73,11 @@ type gateAuthModel struct {
 	TokenCommand   types.List           `tfsdk:"token_command"`
 	AWSWebIdentity *awsWebIdentityModel `tfsdk:"aws_web_identity"`
 	AzureIdentity  *azureIdentityModel  `tfsdk:"azure_identity"`
+	AzureDevOps    *azureDevOpsModel    `tfsdk:"azure_devops"`
+}
+
+type azureDevOpsModel struct {
+	ServiceConnectionID types.String `tfsdk:"service_connection_id"`
 }
 
 type azureIdentityModel struct {
@@ -133,7 +143,8 @@ func (p *eurodnsProvider) Schema(_ context.Context, _ provider.SchemaRequest, re
 				},
 				Blocks: map[string]schema.Block{
 					"auth": schema.SingleNestedBlock{
-						MarkdownDescription: "How to obtain the bearer token sent to the gate. Exactly one method. " +
+						MarkdownDescription: "How to obtain the bearer token sent to the gate. Exactly one method, plus " +
+							"optionally `azure_devops`, which takes precedence inside an Azure DevOps job. " +
 							"Without this block, `EURODNS_GATE_TOKEN` or `EURODNS_GATE_TOKEN_FILE` is used.",
 						Attributes: map[string]schema.Attribute{
 							"token": schema.StringAttribute{
@@ -189,6 +200,18 @@ func (p *eurodnsProvider) Schema(_ context.Context, _ provider.SchemaRequest, re
 									"client_id": schema.StringAttribute{
 										Optional:            true,
 										MarkdownDescription: "Client id of a user-assigned managed identity or workload identity.",
+									},
+								},
+							},
+							"azure_devops": schema.SingleNestedBlock{
+								MarkdownDescription: "Inside an Azure DevOps job, get the OIDC token Azure DevOps issues for a " +
+									"service connection (`SYSTEM_OIDCREQUESTURI`, with `SYSTEM_ACCESSTOKEN` mapped into the step " +
+									"environment). Outside a job, for example on a workstation, the other method of this block is " +
+									"used, so the same configuration runs in the pipeline and locally.",
+								Attributes: map[string]schema.Attribute{
+									"service_connection_id": schema.StringAttribute{
+										Optional:            true,
+										MarkdownDescription: "Id of the service connection the token is issued for. Required in this block.",
 									},
 								},
 							},
@@ -349,8 +372,29 @@ func (p *eurodnsProvider) tokenSource(ctx context.Context, a *gateAuthModel) (eu
 			n++
 		}
 	}
-	if n != 1 {
-		return nil, errors.New("gate.auth must set exactly one of token, token_file, token_command, aws_web_identity, azure_identity")
+	if a.AzureDevOps != nil {
+		id := a.AzureDevOps.ServiceConnectionID.ValueString()
+		if id == "" {
+			return nil, errors.New("gate.auth.azure_devops.service_connection_id is required")
+		}
+		if n > 1 {
+			return nil, errors.New("gate.auth.azure_devops can be combined with at most one of token, token_file, token_command, aws_web_identity, azure_identity")
+		}
+		if inAzureDevOpsJob() {
+			tok := os.Getenv(envADOAccessToken)
+			if tok == "" {
+				return nil, fmt.Errorf("gate.auth.azure_devops: %s is empty; map it into the step environment "+
+					"(env: %s: $(System.AccessToken))", envADOAccessToken, envADOAccessToken)
+			}
+			c := azureDevOpsConfig{ServiceConnectionID: id, RequestURI: os.Getenv(envADOOIDCRequestURI), AccessToken: tok}
+			return newCachingTokenSource(azureDevOpsFetch(c, p.adoHTTP)), nil
+		}
+		if n == 0 {
+			return nil, fmt.Errorf("gate.auth.azure_devops only works inside an Azure DevOps job (%s is not set); "+
+				"add another method, for example azure_identity, for runs outside a pipeline", envADOOIDCRequestURI)
+		}
+	} else if n != 1 {
+		return nil, errors.New("gate.auth must set exactly one of token, token_file, token_command, aws_web_identity, azure_identity, azure_devops")
 	}
 
 	switch {
