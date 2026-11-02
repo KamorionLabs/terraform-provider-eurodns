@@ -8,12 +8,14 @@ description: |-
 # Authenticating to eurodns-gate
 
 In gate mode Terraform never holds the EuroDNS key: it sends a bearer token that the gate verifies
-(issuer, audience, claims) and maps to roles and owner teams. `gate.auth` takes exactly one method.
+(issuer, audience, claims) and maps to roles and owner teams. `gate.auth` takes exactly one method, plus optionally `azure_devops`
+(see below).
 
 | Method | Token | Typical use |
 |--------|-------|-------------|
 | `aws_web_identity` | JWT signed by AWS STS (`sts:GetWebIdentityToken`) for the current IAM principal | CI with an AWS role, EKS Pod Identity |
 | `azure_identity` | Microsoft Entra ID access token for the gate application | Azure DevOps (`AzureCLI@2`), AKS workload identity, managed identity |
+| `azure_devops` | OIDC token Azure DevOps issues for a service connection | Azure DevOps jobs, without any cloud login |
 | `token_file` | File re-read on expiry | Projected Kubernetes service account tokens, CI OIDC token files |
 | `token_command` | stdout of a command, run again on expiry | Any other OIDC helper |
 | `token` | Static value | Gate virtual keys, tests |
@@ -38,3 +40,22 @@ Azure DevOps, with the service connection logged in by `AzureCLI@2`:
 AKS workload identity:
 
 {{ codefile "yaml" "examples/azure-identity/aks-workload-identity.yaml" }}
+
+## Azure DevOps OIDC
+
+`azure_devops` requests the token Azure DevOps issues for a service connection (issuer
+`https://vstoken.dev.azure.com/<organization id>`, audience `api://AzureADTokenExchange`, subject
+`sc://<organization>/<project>/<service connection>`). No cloud login is involved, so it suits pipelines that
+only manage DNS, on any cloud.
+
+It applies inside an Azure DevOps job only. Elsewhere, for example on a workstation, the other method of the
+block is used, typically `azure_identity` with the Azure CLI login of the person running Terraform:
+
+{{ tffile "examples/provider/provider-gate-azure-devops.tf" }}
+
+{{ codefile "yaml" "examples/azure-devops/azure-pipelines.yml" }}
+
+The audience is the same for every service connection of the organization and is also accepted by Entra ID
+and by cloud identity federations. Bind the gate issuer to the subjects of dedicated service connections
+(`bound_claims.sub`) that no cloud role or federated credential trusts, so a token sent to the gate cannot be
+used anywhere else.

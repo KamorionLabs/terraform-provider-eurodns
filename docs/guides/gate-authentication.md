@@ -8,12 +8,14 @@ description: |-
 # Authenticating to eurodns-gate
 
 In gate mode Terraform never holds the EuroDNS key: it sends a bearer token that the gate verifies
-(issuer, audience, claims) and maps to roles and owner teams. `gate.auth` takes exactly one method.
+(issuer, audience, claims) and maps to roles and owner teams. `gate.auth` takes exactly one method, plus optionally `azure_devops`
+(see below).
 
 | Method | Token | Typical use |
 |--------|-------|-------------|
 | `aws_web_identity` | JWT signed by AWS STS (`sts:GetWebIdentityToken`) for the current IAM principal | CI with an AWS role, EKS Pod Identity |
 | `azure_identity` | Microsoft Entra ID access token for the gate application | Azure DevOps (`AzureCLI@2`), AKS workload identity, managed identity |
+| `azure_devops` | OIDC token Azure DevOps issues for a service connection | Azure DevOps jobs, without any cloud login |
 | `token_file` | File re-read on expiry | Projected Kubernetes service account tokens, CI OIDC token files |
 | `token_command` | stdout of a command, run again on expiry | Any other OIDC helper |
 | `token` | Static value | Gate virtual keys, tests |
@@ -123,3 +125,58 @@ spec:
           workingDir: /work
           command: ["sh", "-c", "terraform init -input=false && terraform apply -input=false -auto-approve"]
 ```
+
+## Azure DevOps OIDC
+
+`azure_devops` requests the token Azure DevOps issues for a service connection (issuer
+`https://vstoken.dev.azure.com/<organization id>`, audience `api://AzureADTokenExchange`, subject
+`sc://<organization>/<project>/<service connection>`). No cloud login is involved, so it suits pipelines that
+only manage DNS, on any cloud.
+
+It applies inside an Azure DevOps job only. Elsewhere, for example on a workstation, the other method of the
+block is used, typically `azure_identity` with the Azure CLI login of the person running Terraform:
+
+```terraform
+# Gate mode with the Azure DevOps OIDC token of a service connection. In the
+# pipeline, azure_devops is used; on a workstation (no SYSTEM_OIDCREQUESTURI),
+# azure_identity takes over with the Azure CLI login of the person running
+# Terraform, so the same configuration works in both places.
+provider "eurodns" {
+  gate {
+    url = "https://eurodns-gate.example.com"
+
+    auth {
+      azure_devops {
+        service_connection_id = "22222222-2222-2222-2222-222222222222"
+      }
+      azure_identity {
+        scope = "api://eurodns-gate/.default"
+      }
+    }
+  }
+}
+```
+
+```yaml
+# Azure DevOps: the job requests an OIDC token for the service connection
+# named in the provider. The connection must be authorized for this pipeline,
+# and System.AccessToken must be mapped into the step environment.
+trigger: none
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - script: |
+      terraform init -input=false
+      terraform apply -input=false -auto-approve
+    displayName: terraform apply
+    workingDirectory: dns
+    env:
+      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+```
+
+The audience is the same for every service connection of the organization and is also accepted by Entra ID
+and by cloud identity federations. Bind the gate issuer to the subjects of dedicated service connections
+(`bound_claims.sub`) that no cloud role or federated credential trusts, so a token sent to the gate cannot be
+used anywhere else.
