@@ -1,0 +1,18 @@
+# Azure DevOps: AzureCLI@2 logs the Azure CLI in with the service connection
+# (workload identity federation), and azure_identity picks the CLI login up.
+trigger: none
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - task: AzureCLI@2
+    displayName: terraform apply
+    inputs:
+      azureSubscription: dns-automation # service connection allowed by the gate policy
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        terraform init -input=false
+        terraform apply -input=false -auto-approve
+      workingDirectory: dns

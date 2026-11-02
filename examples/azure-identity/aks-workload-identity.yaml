@@ -1,0 +1,29 @@
+# AKS: a pod running Terraform with Entra workload identity. The webhook
+# injects AZURE_CLIENT_ID, AZURE_TENANT_ID and AZURE_FEDERATED_TOKEN_FILE,
+# which azure_identity uses without extra configuration.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dns-terraform
+  namespace: dns
+  annotations:
+    azure.workload.identity/client-id: 11111111-1111-1111-1111-111111111111
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dns-terraform-apply
+  namespace: dns
+spec:
+  template:
+    metadata:
+      labels:
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: dns-terraform
+      restartPolicy: Never
+      containers:
+        - name: terraform
+          image: hashicorp/terraform:1.10
+          workingDir: /work
+          command: ["sh", "-c", "terraform init -input=false && terraform apply -input=false -auto-approve"]

@@ -1,0 +1,53 @@
+---
+page_title: "EuroDNS Provider"
+description: |-
+  Manage DNS records hosted at EuroDNS, directly or through eurodns-gate.
+---
+
+# EuroDNS Provider
+
+Manages DNS records of zones hosted at [EuroDNS](https://www.eurodns.com/) through the
+[EuroDNS User API](https://docapi.eurodns.com/).
+
+One provider, two modes, the same resources:
+
+| Mode | Configuration | Credentials held by | Guarantees |
+|------|---------------|---------------------|------------|
+| Direct | `app_id` / `api_key` | Terraform | Records outside the configuration are written back unchanged; per-process write serialization only |
+| Gate | `gate` block | [eurodns-gate](https://github.com/KamorionLabs/eurodns-gate) | OIDC identity, RBAC per zone/name/type, the gate only changes RRsets it created or adopted, zone-level concurrency control |
+
+The two modes are mutually exclusive. Switching mode only changes the provider block: the state keeps
+the same resource ids. RRsets created in direct mode are foreign to the gate and must be adopted
+(by importing them in gate mode) before the gate lets Terraform change them.
+
+## Rate limit
+
+EuroDNS allows 10 requests per 10 seconds per source IP and bans offenders progressively. The provider
+reads each zone once per run, serializes writes per zone and paces requests (`request_interval`,
+default `1.1s`). Every write rewrites the whole zone (the API has no per-record update), so it costs a
+read and a save.
+
+## Record data
+
+Values are sent to EuroDNS as written:
+
+- Names must be fully qualified with a trailing dot (CNAME, MX, NS, SRV, PTR and APEX targets). EuroDNS
+  treats a name without it as relative to the zone (`target.example.net` becomes
+  `target.example.net.example.com.`), so the provider refuses such values at plan time.
+- TXT values are stored raw, quotes included: write `v=spf1 -all`, not `"v=spf1 -all"`. A quoted value
+  produces a warning.
+- The SOA record and the apex NS records are locked by EuroDNS (the SOA serial changes on every write)
+  and cannot be managed or imported.
+
+## Example: direct mode
+
+{{ tffile "examples/provider/provider.tf" }}
+
+## Example: gate mode
+
+{{ tffile "examples/provider/provider-gate.tf" }}
+
+Other methods (`azure_identity`, `token_file`, `token_command`, `token`) are described in the
+[gate authentication guide](guides/gate-authentication).
+
+{{ .SchemaMarkdown | trimspace }}

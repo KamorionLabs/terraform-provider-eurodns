@@ -1,0 +1,40 @@
+---
+page_title: "Authenticating to eurodns-gate"
+subcategory: ""
+description: |-
+  Choose how Terraform proves its identity to an eurodns-gate.
+---
+
+# Authenticating to eurodns-gate
+
+In gate mode Terraform never holds the EuroDNS key: it sends a bearer token that the gate verifies
+(issuer, audience, claims) and maps to roles and owner teams. `gate.auth` takes exactly one method.
+
+| Method | Token | Typical use |
+|--------|-------|-------------|
+| `aws_web_identity` | JWT signed by AWS STS (`sts:GetWebIdentityToken`) for the current IAM principal | CI with an AWS role, EKS Pod Identity |
+| `azure_identity` | Microsoft Entra ID access token for the gate application | Azure DevOps (`AzureCLI@2`), AKS workload identity, managed identity |
+| `token_file` | File re-read on expiry | Projected Kubernetes service account tokens, CI OIDC token files |
+| `token_command` | stdout of a command, run again on expiry | Any other OIDC helper |
+| `token` | Static value | Gate virtual keys, tests |
+
+Tokens are cached and renewed two minutes before they expire.
+
+## AWS
+
+{{ tffile "examples/provider/provider-gate.tf" }}
+
+## Microsoft Entra ID
+
+`azure_identity` tries, in order: environment credentials, AKS workload identity, managed identity, then
+the Azure CLI login. With `client_id`, the chain is bound to that user-assigned identity.
+
+{{ tffile "examples/provider/provider-gate-azure.tf" }}
+
+Azure DevOps, with the service connection logged in by `AzureCLI@2`:
+
+{{ codefile "yaml" "examples/azure-identity/azure-pipelines.yml" }}
+
+AKS workload identity:
+
+{{ codefile "yaml" "examples/azure-identity/aks-workload-identity.yaml" }}

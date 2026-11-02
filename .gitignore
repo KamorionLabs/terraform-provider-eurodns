@@ -1,0 +1,6 @@
+/terraform-provider-eurodns
+/dist/
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl

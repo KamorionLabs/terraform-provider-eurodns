@@ -1,0 +1,20 @@
+---
+page_title: "Validating ACM certificates"
+subcategory: ""
+description: |-
+  Create the DNS validation records of an AWS ACM certificate in a EuroDNS zone.
+---
+
+# Validating ACM certificates
+
+ACM validates public certificates through CNAME records in the public zone. With this provider the
+certificate, its validation records and the validation wait live in the same configuration.
+
+{{ tffile "examples/acm-validation/main.tf" }}
+
+Notes:
+
+- `host` is relative to the zone: strip the zone suffix from `resource_record_name`.
+- ACM returns the same validation record for a name and its wildcard: group by record name.
+- For ACME clients (Let's Encrypt), prefer delegating `_acme-challenge.<name>` with a CNAME to a zone
+  dedicated to challenges: the EuroDNS zone is changed once, renewals never touch it.
