@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 
 	eurodns "github.com/KamorionLabs/eurodns-go"
@@ -219,6 +220,35 @@ data "eurodns_record_set" "mx" {
 					resource.TestCheckTypeSetElemNestedAttrs("data.eurodns_zone.z", "records.*", map[string]string{"host": "app", "type": "A", "rdata": "192.0.2.3"}),
 					resource.TestCheckResourceAttr("data.eurodns_record_set.mx", "values.0", "10 mail.example.com."),
 					resource.TestCheckResourceAttr("data.eurodns_record_set.mx", "ttl", "3600"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccRecordSet_typeChangeInPlace(t *testing.T) {
+	clearEnv(t)
+	up := seededUpstream(t)
+	before := up.Zone(testZone).Records
+	p := directProvider(up.URL)
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: testProviders,
+		Steps: []resource.TestStep{
+			{
+				Config: p + recordSet("site", "site", "A", 600, "192.0.2.1"),
+				Check:  checkUpstream(up, "site", "A", "192.0.2.1"),
+			},
+			{
+				Config: p + recordSet("site", "site", "CNAME", 600, "relay.example.net."),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction("eurodns_record_set.site", plancheck.ResourceActionUpdate)},
+				},
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("eurodns_record_set.site", "id", "example.com/site/CNAME"),
+					checkUpstream(up, "site", "A"),
+					checkUpstream(up, "site", "CNAME", "relay.example.net."),
+					checkUnmanagedPreserved(up, before),
 				),
 			},
 		},

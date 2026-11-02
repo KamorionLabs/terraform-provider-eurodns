@@ -63,7 +63,7 @@ func (r *recordSetResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 			"id": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "`<zone>/<host>/<type>`.",
-				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+				PlanModifiers:       []planmodifier.String{idUnlessTypeChanges{}},
 			},
 			"zone": schema.StringAttribute{
 				Required:            true,
@@ -78,10 +78,10 @@ func (r *recordSetResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Validators:          []validator.String{relativeHost{}},
 			},
 			"type": schema.StringAttribute{
-				Required:            true,
-				MarkdownDescription: "Record type: " + strings.Join(recordTypes, ", ") + ". SOA and apex NS records are locked by EuroDNS and cannot be managed.",
-				PlanModifiers:       replace,
-				Validators:          []validator.String{stringvalidator.OneOf(append(recordTypes, "SOA")...)}, // SOA refused with an explicit message
+				Required: true,
+				MarkdownDescription: "Record type: " + strings.Join(recordTypes, ", ") + ". SOA and apex NS records are locked by EuroDNS and cannot be managed. " +
+					"Changing it replaces the RRset in place, in a single zone save (for example `A` to `CNAME`, or `A` to `APEX`).",
+				Validators: []validator.String{stringvalidator.OneOf(append(recordTypes, "SOA")...)}, // SOA refused with an explicit message
 			},
 			"ttl": schema.Int64Attribute{
 				Optional:            true,
@@ -134,11 +134,11 @@ func (r *recordSetResource) Create(ctx context.Context, req resource.CreateReque
 	}
 	zone, key, ttl := plan.Zone.ValueString(), plan.key(), int(plan.TTL.ValueInt64())
 
-	err := r.api.write(ctx, zone, func(current *eurodns.Zone) (*zonediff.Change, error) {
+	err := r.api.write(ctx, zone, func(current *eurodns.Zone) ([]zonediff.Change, error) {
 		if findSet(zone, current, key) != nil {
 			return nil, &existsError{zone: zone, key: key}
 		}
-		return &zonediff.Change{Op: zonediff.OpCreate, Key: key, New: buildSet(key, ttl, values, nil)}, nil
+		return []zonediff.Change{{Op: zonediff.OpCreate, Key: key, New: buildSet(key, ttl, values, nil)}}, nil
 	})
 	if err != nil {
 		var e *existsError
@@ -180,23 +180,42 @@ func (r *recordSetResource) Read(ctx context.Context, req resource.ReadRequest, 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
+// Update also handles a type change: the previous RRset is removed and the new
+// one written in the same zone save, so the name never stops resolving (for
+// example A to CNAME, or A to APEX).
 func (r *recordSetResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan recordSetModel
+	var plan, state recordSetModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	values := plan.values(ctx, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 	zone, key, ttl := plan.Zone.ValueString(), plan.key(), int(plan.TTL.ValueInt64())
+	prevKey := state.key()
 
-	err := r.api.write(ctx, zone, func(current *eurodns.Zone) (*zonediff.Change, error) {
+	err := r.api.write(ctx, zone, func(current *eurodns.Zone) ([]zonediff.Change, error) {
+		var changes []zonediff.Change
+		if prevKey != key {
+			if prev := findSet(zone, current, prevKey); prev != nil {
+				changes = append(changes, zonediff.Change{Op: zonediff.OpDelete, Key: prevKey, Old: prev})
+			}
+		}
 		old := findSet(zone, current, key)
 		if old == nil {
-			return &zonediff.Change{Op: zonediff.OpCreate, Key: key, New: buildSet(key, ttl, values, nil)}, nil
+			return append(changes, zonediff.Change{Op: zonediff.OpCreate, Key: key, New: buildSet(key, ttl, values, nil)}), nil
 		}
-		return &zonediff.Change{Op: zonediff.OpUpdate, Key: key, Old: old, New: buildSet(key, ttl, values, old)}, nil
+		if prevKey != key {
+			return nil, &existsError{zone: zone, key: key}
+		}
+		return append(changes, zonediff.Change{Op: zonediff.OpUpdate, Key: key, Old: old, New: buildSet(key, ttl, values, old)}), nil
 	})
 	if err != nil {
+		var e *existsError
+		if errors.As(err, &e) {
+			resp.Diagnostics.AddError("Record set already exists", e.Error())
+			return
+		}
 		addAPIError(&resp.Diagnostics, "Cannot update the record set", err)
 		return
 	}
@@ -211,12 +230,12 @@ func (r *recordSetResource) Delete(ctx context.Context, req resource.DeleteReque
 		return
 	}
 	zone, key := state.Zone.ValueString(), state.key()
-	err := r.api.write(ctx, zone, func(current *eurodns.Zone) (*zonediff.Change, error) {
+	err := r.api.write(ctx, zone, func(current *eurodns.Zone) ([]zonediff.Change, error) {
 		old := findSet(zone, current, key)
 		if old == nil {
 			return nil, nil
 		}
-		return &zonediff.Change{Op: zonediff.OpDelete, Key: key, Old: old}, nil
+		return []zonediff.Change{{Op: zonediff.OpDelete, Key: key, Old: old}}, nil
 	})
 	if err != nil && !eurodns.IsNotFound(err) {
 		addAPIError(&resp.Diagnostics, "Cannot delete the record set", err)
@@ -266,4 +285,29 @@ func stringSet(values []string) types.Set {
 		elems[i] = types.StringValue(v)
 	}
 	return types.SetValueMust(types.StringType, elems)
+}
+
+// idUnlessTypeChanges keeps the id from the state, except when the type
+// changes: the id embeds the type, so it is then known only after apply.
+type idUnlessTypeChanges struct{}
+
+func (idUnlessTypeChanges) Description(context.Context) string {
+	return "Keeps the prior id unless the record type changes."
+}
+
+func (m idUnlessTypeChanges) MarkdownDescription(ctx context.Context) string {
+	return m.Description(ctx)
+}
+
+func (idUnlessTypeChanges) PlanModifyString(ctx context.Context, req planmodifier.StringRequest, resp *planmodifier.StringResponse) {
+	if req.StateValue.IsNull() || !req.PlanValue.IsUnknown() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	var prior, planned types.String
+	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("type"), &prior)...)
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("type"), &planned)...)
+	if planned.IsUnknown() || !prior.Equal(planned) {
+		return
+	}
+	resp.PlanValue = req.StateValue
 }

@@ -53,7 +53,7 @@ resource "eurodns_record_set" "mail" {
 ### Required
 
 - `host` (String) Name relative to the zone, lowercase, `@` for the apex (for example `www`, `_acme-challenge.www`).
-- `type` (String) Record type: A, AAAA, CNAME, MX, NS, PTR, SRV, TXT, SPF, CAA, APEX, TLSA, SVCB, HTTPS, DS. SOA and apex NS records are locked by EuroDNS and cannot be managed.
+- `type` (String) Record type: A, AAAA, CNAME, MX, NS, PTR, SRV, TXT, SPF, CAA, APEX, TLSA, SVCB, HTTPS, DS. SOA and apex NS records are locked by EuroDNS and cannot be managed. Changing it replaces the RRset in place, in a single zone save (for example `A` to `CNAME`, or `A` to `APEX`).
 - `values` (Set of String) Record data (rdata), one entry per record, sent to EuroDNS as is. Names (CNAME, MX, NS, SRV... targets) must end with a dot: EuroDNS treats names without a trailing dot as relative to the zone. TXT values are sent raw: do not wrap them in quotes.
 - `zone` (String) Zone (domain) name, for example `example.com`.
 

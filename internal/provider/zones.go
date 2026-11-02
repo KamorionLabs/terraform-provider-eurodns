@@ -108,11 +108,11 @@ func findSet(zoneName string, z *eurodns.Zone, key rrset.Key) *rrset.Set {
 	return nil
 }
 
-// mutateFunc returns the change to apply to the freshly read zone, or nil
+// mutateFunc returns the changes to apply to the freshly read zone, none
 // when nothing has to be written.
-type mutateFunc func(current *eurodns.Zone) (*zonediff.Change, error)
+type mutateFunc func(current *eurodns.Zone) ([]zonediff.Change, error)
 
-// write reads the zone fresh, applies one RRset change and saves the whole
+// write reads the zone fresh, applies the RRset changes and saves the whole
 // zone with If-Match, retrying from a fresh read when the gate reports that
 // the zone changed meanwhile. Records outside the change are written back
 // unchanged.
@@ -127,11 +127,11 @@ func (a *apiClient) write(ctx context.Context, zoneName string, mutate mutateFun
 		if err != nil {
 			return err
 		}
-		change, err := mutate(current)
-		if err != nil || change == nil {
+		changes, err := mutate(current)
+		if err != nil || len(changes) == 0 {
 			return err
 		}
-		desired := zonediff.Apply(zoneName, current, []zonediff.Change{*change})
+		desired := zonediff.Apply(zoneName, current, changes)
 		err = a.client.SaveZone(ctx, zoneName, desired, eurodns.WithIfMatch(current.ETag))
 		if err == nil {
 			return nil
