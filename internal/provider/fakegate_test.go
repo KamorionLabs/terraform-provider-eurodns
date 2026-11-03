@@ -47,6 +47,8 @@ type fakeGate struct {
 	failUnavailable int
 	lockRefusals    int
 	retryAfter      string
+
+	policy *fakePolicy // delegation API, nil when the gate does not serve it
 }
 
 func newFakeGate(t *testing.T, upstream *eurodnstest.Server, features ...string) *fakeGate {
@@ -161,6 +163,9 @@ func (g *fakeGate) serve(w http.ResponseWriter, r *http.Request) {
 		g.saves++
 		g.version++
 		w.WriteHeader(http.StatusNoContent)
+
+	case g.policy != nil && strings.HasPrefix(r.URL.Path, delegatedPath+"/"):
+		g.policy.serve(w, r)
 
 	default:
 		gateError(w, http.StatusNotFound, "not_found", r.Method+" "+r.URL.Path)

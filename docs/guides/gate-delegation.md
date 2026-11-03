@@ -1,0 +1,186 @@
+---
+page_title: "Managing gate roles and bindings from a pipeline stack"
+subcategory: ""
+description: |-
+  Let the Terraform stack that creates CI pipelines also create, in the same apply, the eurodns-gate role and binding of each pipeline.
+---
+
+# Managing gate roles and bindings from a pipeline stack
+
+A stack that creates CI pipelines usually creates, for each one, a cloud role and a policy scoped to what
+that pipeline may touch. `eurodns_gate_role` and `eurodns_gate_binding` do the same for DNS: in the same
+apply, the stack creates the pipeline's service connection and the gate role and binding that let that
+service connection write only its own DNS names.
+
+The resources reference the gate configuration below; the issuer `azure-devops` (Azure DevOps OIDC) must
+accept both the stack's service connection and the pipelines' ones (`bound_claims.sub`), each dedicated to the
+gate (see the gate documentation on Azure DevOps OIDC).
+
+The two resources only work in gate mode and need an eurodns-gate that serves the delegation API (feature
+`policy-delegation`).
+
+## How the gate trusts the stack
+
+The gate administrators declare a **delegation** in the gate configuration file (`policy.delegations`, see
+the gate `docs/CONFIG.md`). It names the identities allowed to use it (here the service connection of the
+stack) and bounds what they may create:
+
+- `allow.zones`, `allow.actions`, `allow.records`: what a delegated role may grant (never `policy.*`, always
+  inside `policy.bounds`);
+- `allow.binding_subjects`: which identities a delegated binding may target, for example every service
+  connection under a prefix dedicated to the gate;
+- `allow.teams`: which owner teams a binding may use. With `from_subject`, the team is derived from the bound
+  subject, so each pipeline owns the records it creates and cannot change those of another pipeline;
+- `allow.roles`, `allow.groups`, `allow.max_objects`.
+
+```yaml
+# Gate configuration (base file): the delegation of the stack that creates
+# pipelines.
+policy:
+  editable: true
+  bounds:
+    zones: ["example.com"]
+    actions: [dns.read, dns.record.write, ui.read]
+  delegations:
+    - name: workloads-pipelines
+      description: Gate identities of the pipelines created by the workloads stack
+      subjects:
+        - issuer: azure-devops
+          claims: {sub: ["sc://org/project/workloads-pipelines"]}
+      allow:
+        zones: ["example.com"]
+        actions: [dns.read, dns.record.write]
+        records: {hosts: ["**.apps"], types: [CNAME, TXT]}
+        binding_subjects:
+          - issuer: azure-devops
+            claims: {sub: ["sc://org/project/eurodns-gate-*"]}
+        teams:
+          from_subject:
+            claim: sub
+            regex: "^sc://[^/]+/[^/]+/(eurodns-gate-[a-z0-9-]+)$"
+```
+
+Changes made through a delegation are validated against it, then activated at once as a new managed policy
+revision, **without approval** (whatever `policy.require_approval` says): the review happened when the
+delegation itself was merged in the gate configuration. Every change is audited (`policy.delegated.*`) and
+shows up in the revision history of the gate UI with its impact analysis. Humans see delegated objects but
+cannot change them, unless a policy administrator explicitly takes them over; the resources then disappear
+from the state at the next refresh (and a new apply fails with `name_taken` until they are removed from the
+configuration).
+
+## The module
+
+One module per pipeline creates the service connection, the role and the binding:
+
+```terraform
+# One pipeline: its dedicated Azure DevOps service connection, the gate role
+# that lets it write only its own DNS names, and the binding of that role to
+# the service connection. The stack that creates pipelines calls this module
+# once per pipeline, as it creates each pipeline's cloud role and policy.
+
+terraform {
+  required_providers {
+    azuredevops = { source = "microsoft/azuredevops" }
+    eurodns     = { source = "kamorionlabs/eurodns" }
+  }
+}
+
+variable "project_id" { type = string }
+variable "project_name" { type = string }
+variable "organization" { type = string }
+variable "pipeline_id" { type = number }
+variable "name" {
+  type        = string
+  description = "Pipeline short name: the service connection is eurodns-gate-<name>."
+}
+variable "zone" { type = string }
+variable "hosts" { type = list(string) }
+
+locals {
+  connection = "eurodns-gate-${var.name}"
+  subject    = "sc://${var.organization}/${var.project_name}/${local.connection}"
+}
+
+# Generic service connection without credentials, used only for its OIDC
+# token (gate.auth.azure_devops in the pipeline's provider block).
+resource "azuredevops_serviceendpoint_generic" "gate" {
+  project_id            = var.project_id
+  service_endpoint_name = local.connection
+  server_url            = "https://eurodns-gate.example.com"
+  description           = "eurodns-gate identity of pipeline ${var.name}"
+}
+
+resource "azuredevops_pipeline_authorization" "gate" {
+  project_id  = var.project_id
+  resource_id = azuredevops_serviceendpoint_generic.gate.id
+  type        = "endpoint"
+  pipeline_id = var.pipeline_id
+}
+
+resource "eurodns_gate_role" "this" {
+  name        = local.connection
+  description = "DNS names of pipeline ${var.name}"
+  rules = [{
+    zones   = [var.zone]
+    actions = ["dns.read", "dns.record.write"]
+    hosts   = var.hosts
+    types   = ["CNAME", "TXT"]
+  }]
+}
+
+resource "eurodns_gate_binding" "this" {
+  name = local.connection
+  role = eurodns_gate_role.this.name
+  team = local.connection # derived by the delegation from the subject
+  subjects = [{
+    issuer = "azure-devops"
+    claims = { sub = [local.subject] }
+  }]
+}
+
+output "service_connection_id" {
+  value = azuredevops_serviceendpoint_generic.gate.id
+}
+```
+
+The stack calls it once per pipeline, with its own identity being the subject of the delegation:
+
+```terraform
+# The stack that creates pipelines runs with the identity of the gate
+# delegation (here its own Azure DevOps service connection).
+provider "eurodns" {
+  gate {
+    url = "https://eurodns-gate.example.com"
+    auth {
+      azure_devops {} # EURODNS_GATE_ADO_SERVICE_CONNECTION_ID
+    }
+  }
+}
+
+module "pipeline_web" {
+  source       = "./modules/pipeline"
+  organization = "org"
+  project_name = "project"
+  project_id   = var.project_id
+  pipeline_id  = 42
+  name         = "web"
+  zone         = "example.com"
+  hosts        = ["web.apps", "_acme-challenge.web.apps"]
+}
+
+variable "project_id" { type = string }
+```
+
+The pipeline created this way then uses its service connection with `gate.auth.azure_devops` (see
+[Authenticating to eurodns-gate](gate-authentication)) and can write `web.apps` and its ACME challenge, nothing
+else.
+
+## Behaviour
+
+- Names are stable identifiers in the gate (`name`, import by name). Roles share their namespace with the base
+  and managed roles of the gate.
+- Every update sends the `etag` of the state as `If-Match`: a change made in the gate since the last refresh is
+  reported instead of being overwritten. `terraform plan` shows such drift.
+- Writes that race with other policy changes on the gate (several replicas) are retried by the gate, then by
+  the provider (`409 policy_busy`).
+- Deleting the binding removes the pipeline's gate identity at once; RRsets it owns stay owned by its team.
