@@ -82,6 +82,8 @@ resource "eurodns_record_set" "www" {
 - Creation fails if the RRset already exists: import it (see below).
 - The provider reads each zone once per run, serializes writes per zone and retries
   within the EuroDNS rate limit.
+- Changing `host` or `type` moves the RRset within the zone in a single save; changing
+  `zone` replaces it.
 - In gate mode, a write refused because another process holds the zone lock
   (`zone_locked`) is retried from a fresh read, honoring `Retry-After`, for up to
   about 5 minutes.

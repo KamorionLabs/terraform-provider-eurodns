@@ -80,5 +80,8 @@ Notes:
 
 - `host` is relative to the zone: strip the zone suffix from `resource_record_name`.
 - ACM returns the same validation record for a name and its wildcard: group by record name.
+- `host` is unknown at plan time while a certificate is being created or replaced. The record set then
+  plans an update, not a replacement, and the provider writes nothing if the host resolves to its current
+  value. A new host moves the RRset within the zone in a single save.
 - For ACME clients (Let's Encrypt), prefer delegating `_acme-challenge.<name>` with a CNAME to a zone
   dedicated to challenges: the EuroDNS zone is changed once, renewals never touch it.

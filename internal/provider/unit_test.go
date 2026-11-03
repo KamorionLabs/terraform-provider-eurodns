@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,6 +17,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	eurodns "github.com/KamorionLabs/eurodns-go"
+	"github.com/KamorionLabs/eurodns-go/rrset"
+	"github.com/KamorionLabs/eurodns-go/zonediff"
 )
 
 func fakeJWT(exp time.Time) string {
@@ -199,4 +202,48 @@ func TestZoneReadIsSharedAcrossResources(t *testing.T) {
 	if n := up.Requests() - start; n != 2 {
 		t.Fatalf("expected a fresh read after invalidation, got %d", n)
 	}
+}
+
+func TestUpdateChanges(t *testing.T) {
+	zone := &eurodns.Zone{Name: testZone, Records: []eurodns.Record{
+		{Type: "CNAME", Host: "_validation.www", TTL: 600, RData: "_token.acm-validations.example.net."},
+		{Type: "TXT", Host: "legacy", TTL: 600, RData: "keep-me"},
+	}}
+	cur := rrset.Key{Host: "_validation.www", Type: "CNAME"}
+	values := []string{"_token.acm-validations.example.net."}
+	ops := func(changes []zonediff.Change) string {
+		var out []string
+		for _, c := range changes {
+			out = append(out, fmt.Sprintf("%v %s/%s", c.Op, c.Key.Host, c.Key.Type))
+		}
+		return strings.Join(out, ", ")
+	}
+
+	t.Run("same key and content writes nothing", func(t *testing.T) {
+		changes, err := updateChanges(testZone, zone, cur, cur, 600, values)
+		if err != nil || len(changes) != 0 {
+			t.Fatalf("changes %s, err %v", ops(changes), err)
+		}
+	})
+	t.Run("same key, new content", func(t *testing.T) {
+		changes, err := updateChanges(testZone, zone, cur, cur, 3600, values)
+		if err != nil || len(changes) != 1 || changes[0].Op != zonediff.OpUpdate {
+			t.Fatalf("changes %s, err %v", ops(changes), err)
+		}
+	})
+	t.Run("host change deletes and creates in one change list", func(t *testing.T) {
+		next := rrset.Key{Host: "_validation.api", Type: "CNAME"}
+		changes, err := updateChanges(testZone, zone, cur, next, 600, values)
+		if err != nil || len(changes) != 2 || changes[0].Op != zonediff.OpDelete || changes[0].Key != cur ||
+			changes[1].Op != zonediff.OpCreate || changes[1].Key != next {
+			t.Fatalf("changes %s, err %v", ops(changes), err)
+		}
+	})
+	t.Run("host change onto an unmanaged RRset is refused", func(t *testing.T) {
+		_, err := updateChanges(testZone, zone, cur, rrset.Key{Host: "legacy", Type: "TXT"}, 600, []string{"x"})
+		var e *existsError
+		if !errors.As(err, &e) {
+			t.Fatalf("expected existsError, got %v", err)
+		}
+	})
 }

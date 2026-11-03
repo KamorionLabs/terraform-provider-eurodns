@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -54,7 +55,6 @@ func (r *recordSetResource) Metadata(_ context.Context, req resource.MetadataReq
 }
 
 func (r *recordSetResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
-	replace := []planmodifier.String{stringplanmodifier.RequiresReplace()}
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "All records of one name and type (an RRset) in a EuroDNS zone. " +
 			"Creation fails if the RRset already exists: import it instead. Records not managed by this " +
@@ -63,19 +63,20 @@ func (r *recordSetResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 			"id": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "`<zone>/<host>/<type>`.",
-				PlanModifiers:       []planmodifier.String{idUnlessTypeChanges{}},
+				PlanModifiers:       []planmodifier.String{idUnlessKeyChanges{}},
 			},
 			"zone": schema.StringAttribute{
 				Required:            true,
-				MarkdownDescription: "Zone (domain) name, for example `example.com`.",
-				PlanModifiers:       replace,
+				MarkdownDescription: "Zone (domain) name, for example `example.com`. Changing it replaces the record set.",
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators:          []validator.String{lowercaseNoDot{}},
 			},
 			"host": schema.StringAttribute{
-				Required:            true,
-				MarkdownDescription: "Name relative to the zone, lowercase, `@` for the apex (for example `www`, `_acme-challenge.www`).",
-				PlanModifiers:       replace,
-				Validators:          []validator.String{relativeHost{}},
+				Required: true,
+				MarkdownDescription: "Name relative to the zone, lowercase, `@` for the apex (for example `www`, `_acme-challenge.www`). " +
+					"Changing it moves the RRset in place, in a single zone save. A host unknown at plan time (for example taken from " +
+					"an ACM certificate being created) plans an update, and nothing is written if it resolves to the current host.",
+				Validators: []validator.String{relativeHost{}},
 			},
 			"type": schema.StringAttribute{
 				Required: true,
@@ -180,9 +181,7 @@ func (r *recordSetResource) Read(ctx context.Context, req resource.ReadRequest, 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-// Update also handles a type change: the previous RRset is removed and the new
-// one written in the same zone save, so the name never stops resolving (for
-// example A to CNAME, or A to APEX).
+// Update also handles a host or type change (see updateChanges).
 func (r *recordSetResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var plan, state recordSetModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -195,20 +194,7 @@ func (r *recordSetResource) Update(ctx context.Context, req resource.UpdateReque
 	prevKey := state.key()
 
 	err := r.api.write(ctx, zone, func(current *eurodns.Zone) ([]zonediff.Change, error) {
-		var changes []zonediff.Change
-		if prevKey != key {
-			if prev := findSet(zone, current, prevKey); prev != nil {
-				changes = append(changes, zonediff.Change{Op: zonediff.OpDelete, Key: prevKey, Old: prev})
-			}
-		}
-		old := findSet(zone, current, key)
-		if old == nil {
-			return append(changes, zonediff.Change{Op: zonediff.OpCreate, Key: key, New: buildSet(key, ttl, values, nil)}), nil
-		}
-		if prevKey != key {
-			return nil, &existsError{zone: zone, key: key}
-		}
-		return append(changes, zonediff.Change{Op: zonediff.OpUpdate, Key: key, Old: old, New: buildSet(key, ttl, values, old)}), nil
+		return updateChanges(zone, current, prevKey, key, ttl, values)
 	})
 	if err != nil {
 		var e *existsError
@@ -221,6 +207,32 @@ func (r *recordSetResource) Update(ctx context.Context, req resource.UpdateReque
 	}
 	plan.ID = types.StringValue(recordSetID(zone, key))
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+}
+
+// updateChanges moves the RRset from prevKey to key when the host or the type
+// changes: the previous RRset is removed and the new one written in the same
+// zone save, so the name never stops resolving (for example A to CNAME, or a
+// validation record renamed). The move refuses to overwrite an RRset this
+// configuration does not manage. No change is returned when the zone already
+// holds the planned RRset.
+func updateChanges(zone string, current *eurodns.Zone, prevKey, key rrset.Key, ttl int, values []string) ([]zonediff.Change, error) {
+	var changes []zonediff.Change
+	if prevKey != key {
+		if prev := findSet(zone, current, prevKey); prev != nil {
+			changes = append(changes, zonediff.Change{Op: zonediff.OpDelete, Key: prevKey, Old: prev})
+		}
+	}
+	old := findSet(zone, current, key)
+	if old == nil {
+		return append(changes, zonediff.Change{Op: zonediff.OpCreate, Key: key, New: buildSet(key, ttl, values, nil)}), nil
+	}
+	if prevKey != key {
+		return nil, &existsError{zone: zone, key: key}
+	}
+	if old.TTL == ttl && slices.Equal(old.Values, values) {
+		return nil, nil
+	}
+	return []zonediff.Change{{Op: zonediff.OpUpdate, Key: key, Old: old, New: buildSet(key, ttl, values, old)}}, nil
 }
 
 func (r *recordSetResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -286,27 +298,30 @@ func stringSet(values []string) types.Set {
 	return types.SetValueMust(types.StringType, elems)
 }
 
-// idUnlessTypeChanges keeps the id from the state, except when the type
-// changes: the id embeds the type, so it is then known only after apply.
-type idUnlessTypeChanges struct{}
+// idUnlessKeyChanges keeps the id from the state while the host and the type
+// are known and unchanged: the id embeds both, so it is otherwise known only
+// after apply.
+type idUnlessKeyChanges struct{}
 
-func (idUnlessTypeChanges) Description(context.Context) string {
-	return "Keeps the prior id unless the record type changes."
+func (idUnlessKeyChanges) Description(context.Context) string {
+	return "Keeps the prior id unless the host or the record type changes."
 }
 
-func (m idUnlessTypeChanges) MarkdownDescription(ctx context.Context) string {
+func (m idUnlessKeyChanges) MarkdownDescription(ctx context.Context) string {
 	return m.Description(ctx)
 }
 
-func (idUnlessTypeChanges) PlanModifyString(ctx context.Context, req planmodifier.StringRequest, resp *planmodifier.StringResponse) {
+func (idUnlessKeyChanges) PlanModifyString(ctx context.Context, req planmodifier.StringRequest, resp *planmodifier.StringResponse) {
 	if req.StateValue.IsNull() || !req.PlanValue.IsUnknown() || req.ConfigValue.IsUnknown() {
 		return
 	}
-	var prior, planned types.String
-	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("type"), &prior)...)
-	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("type"), &planned)...)
-	if planned.IsUnknown() || !prior.Equal(planned) {
-		return
+	for _, attr := range []string{"host", "type"} {
+		var prior, planned types.String
+		resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root(attr), &prior)...)
+		resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root(attr), &planned)...)
+		if resp.Diagnostics.HasError() || planned.IsUnknown() || !prior.Equal(planned) {
+			return
+		}
 	}
 	resp.PlanValue = req.StateValue
 }
