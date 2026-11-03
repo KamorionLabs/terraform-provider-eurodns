@@ -7,9 +7,9 @@ provider "eurodns" {
     url = "https://eurodns-gate.example.com"
 
     auth {
-      azure_devops {
-        service_connection_id = "22222222-2222-2222-2222-222222222222"
-      }
+      # service_connection_id defaults to EURODNS_GATE_ADO_SERVICE_CONNECTION_ID,
+      # for example from a variable group of the pipeline.
+      azure_devops {}
       azure_identity {
         scope = "api://eurodns-gate/.default"
       }

@@ -126,7 +126,7 @@ Optional:
 
 Optional:
 
-- `service_connection_id` (String) Id of the service connection the token is issued for. Required in this block.
+- `service_connection_id` (String) Id of the service connection the token is issued for. Defaults to the `EURODNS_GATE_ADO_SERVICE_CONNECTION_ID` environment variable, for example from a variable group of the pipeline, so the configuration names no id. Required inside a job, one way or the other.
 
 
 <a id="nestedblock--gate--auth--azure_identity"></a>

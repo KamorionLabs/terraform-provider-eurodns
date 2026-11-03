@@ -17,7 +17,9 @@ import (
 const (
 	envADOOIDCRequestURI = "SYSTEM_OIDCREQUESTURI"
 	envADOAccessToken    = "SYSTEM_ACCESSTOKEN"
-	adoOIDCAPIVersion    = "7.1"
+	// envADOServiceConnectionID is the service connection id when the configuration sets none.
+	envADOServiceConnectionID = "EURODNS_GATE_ADO_SERVICE_CONNECTION_ID"
+	adoOIDCAPIVersion         = "7.1"
 )
 
 type azureDevOpsConfig struct {

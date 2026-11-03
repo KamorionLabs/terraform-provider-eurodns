@@ -48,7 +48,9 @@ AKS workload identity:
 `sc://<organization>/<project>/<service connection>`). No cloud login is involved, so it suits pipelines that
 only manage DNS, on any cloud.
 
-It applies inside an Azure DevOps job only. Elsewhere, for example on a workstation, the other method of the
+The service connection id is `service_connection_id`, or else the `EURODNS_GATE_ADO_SERVICE_CONNECTION_ID`
+environment variable: a variable group named after the pipeline can carry it, so the configuration and the
+pipeline YAML only use names. It applies inside an Azure DevOps job only. Elsewhere, for example on a workstation, the other method of the
 block is used, typically `azure_identity` with the Azure CLI login of the person running Terraform:
 
 {{ tffile "examples/provider/provider-gate-azure-devops.tf" }}

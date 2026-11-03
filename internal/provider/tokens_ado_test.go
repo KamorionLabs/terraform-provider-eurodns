@@ -108,8 +108,42 @@ func TestResolveAzureDevOps(t *testing.T) {
 		t.Fatalf("inside a job, azure_devops alone: token %q, err %v", tok, err)
 	}
 
-	if _, err := p.resolve(ctx, model(&gateAuthModel{AzureDevOps: &azureDevOpsModel{ServiceConnectionID: types.StringNull()}})); err == nil ||
+	noID := func() providerModel {
+		return model(&gateAuthModel{AzureDevOps: &azureDevOpsModel{ServiceConnectionID: types.StringNull()}})
+	}
+	if _, err := p.resolve(ctx, noID()); err == nil ||
 		!strings.Contains(err.Error(), "service_connection_id is required") {
 		t.Fatalf("expected missing id error, got %v", err)
+	}
+	t.Setenv(envADOServiceConnectionID, "sc-id")
+	if tok, err := token(noID()); err != nil || tok != "ado-token" {
+		t.Fatalf("id from %s: token %q, err %v", envADOServiceConnectionID, tok, err)
+	}
+}
+
+func TestResolveAzureDevOpsNoIDOutsideJob(t *testing.T) {
+	ctx := context.Background()
+	azure := &fakeAzureCredential{exp: time.Now().Add(time.Hour)}
+	p := &eurodnsProvider{newSTS: defaultSTSClient,
+		newAzureCredential: func(azureIdentityConfig) (azcore.TokenCredential, error) { return azure, nil }}
+	clearEnv(t)
+	a := &gateAuthModel{
+		AzureDevOps: &azureDevOpsModel{ServiceConnectionID: types.StringNull()},
+		AzureIdentity: &azureIdentityModel{
+			Scope: types.StringValue("api://gate/.default"), TenantID: types.StringNull(), ClientID: types.StringNull(),
+		},
+		TokenCommand: types.ListNull(types.StringType), Token: types.StringNull(), TokenFile: types.StringNull(),
+	}
+	m := providerModel{
+		AppID: types.StringNull(), APIKey: types.StringNull(), BaseURL: types.StringNull(),
+		MaxRetries: types.Int64Null(), RequestInterval: types.StringNull(), RequestBurst: types.Int64Null(),
+		Gate: &gateModel{URL: types.StringValue("https://gate.example.com"), Auth: a},
+	}
+	s, err := p.resolve(ctx, m)
+	if err != nil {
+		t.Fatalf("outside a job without id: %v", err)
+	}
+	if tok, err := s.auth.(*eurodns.BearerAuth).Source.Token(ctx); err != nil || tok != "entra-token" {
+		t.Fatalf("outside a job without id: token %q, err %v", tok, err)
 	}
 }
