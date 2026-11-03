@@ -210,8 +210,10 @@ func (p *eurodnsProvider) Schema(_ context.Context, _ provider.SchemaRequest, re
 									"used, so the same configuration runs in the pipeline and locally.",
 								Attributes: map[string]schema.Attribute{
 									"service_connection_id": schema.StringAttribute{
-										Optional:            true,
-										MarkdownDescription: "Id of the service connection the token is issued for. Required in this block.",
+										Optional: true,
+										MarkdownDescription: "Id of the service connection the token is issued for. Defaults to the " +
+											"`EURODNS_GATE_ADO_SERVICE_CONNECTION_ID` environment variable, for example from a variable " +
+											"group of the pipeline, so the configuration names no id. Required inside a job, one way or the other.",
 									},
 								},
 							},
@@ -375,12 +377,16 @@ func (p *eurodnsProvider) tokenSource(ctx context.Context, a *gateAuthModel) (eu
 	if a.AzureDevOps != nil {
 		id := a.AzureDevOps.ServiceConnectionID.ValueString()
 		if id == "" {
-			return nil, errors.New("gate.auth.azure_devops.service_connection_id is required")
+			id = os.Getenv(envADOServiceConnectionID)
 		}
 		if n > 1 {
 			return nil, errors.New("gate.auth.azure_devops can be combined with at most one of token, token_file, token_command, aws_web_identity, azure_identity")
 		}
 		if inAzureDevOpsJob() {
+			if id == "" {
+				return nil, fmt.Errorf("gate.auth.azure_devops: service_connection_id is required (or %s in the environment)",
+					envADOServiceConnectionID)
+			}
 			tok := os.Getenv(envADOAccessToken)
 			if tok == "" {
 				return nil, fmt.Errorf("gate.auth.azure_devops: %s is empty; map it into the step environment "+

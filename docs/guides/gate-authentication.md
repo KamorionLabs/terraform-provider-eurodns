@@ -133,7 +133,9 @@ spec:
 `sc://<organization>/<project>/<service connection>`). No cloud login is involved, so it suits pipelines that
 only manage DNS, on any cloud.
 
-It applies inside an Azure DevOps job only. Elsewhere, for example on a workstation, the other method of the
+The service connection id is `service_connection_id`, or else the `EURODNS_GATE_ADO_SERVICE_CONNECTION_ID`
+environment variable: a variable group named after the pipeline can carry it, so the configuration and the
+pipeline YAML only use names. It applies inside an Azure DevOps job only. Elsewhere, for example on a workstation, the other method of the
 block is used, typically `azure_identity` with the Azure CLI login of the person running Terraform:
 
 ```terraform
@@ -146,9 +148,9 @@ provider "eurodns" {
     url = "https://eurodns-gate.example.com"
 
     auth {
-      azure_devops {
-        service_connection_id = "22222222-2222-2222-2222-222222222222"
-      }
+      # service_connection_id defaults to EURODNS_GATE_ADO_SERVICE_CONNECTION_ID,
+      # for example from a variable group of the pipeline.
+      azure_devops {}
       azure_identity {
         scope = "api://eurodns-gate/.default"
       }
@@ -158,13 +160,18 @@ provider "eurodns" {
 ```
 
 ```yaml
-# Azure DevOps: the job requests an OIDC token for the service connection
-# named in the provider. The connection must be authorized for this pipeline,
-# and System.AccessToken must be mapped into the step environment.
+# Azure DevOps: the job requests an OIDC token for the service connection of the
+# provider. The connection must be authorized for this pipeline, and
+# System.AccessToken must be mapped into the step environment. The connection id
+# can come from a variable group (EURODNS_GATE_ADO_SERVICE_CONNECTION_ID), so the
+# Terraform configuration names no id.
 trigger: none
 
 pool:
   vmImage: ubuntu-latest
+
+variables:
+  - group: eurodns-gate-dns # EURODNS_GATE_ADO_SERVICE_CONNECTION_ID
 
 steps:
   - script: |
