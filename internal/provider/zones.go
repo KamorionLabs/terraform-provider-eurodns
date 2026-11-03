@@ -34,6 +34,8 @@ type apiClient struct {
 	cache  map[string]*eurodns.Zone
 	gen    map[string]uint64
 	writes map[string]*sync.Mutex
+
+	lockRetry lockRetryPolicy
 }
 
 func newAPIClient(c *eurodns.Client, mode string, features []string) *apiClient {
@@ -48,6 +50,8 @@ func newAPIClient(c *eurodns.Client, mode string, features []string) *apiClient 
 		cache:    map[string]*eurodns.Zone{},
 		gen:      map[string]uint64{},
 		writes:   map[string]*sync.Mutex{},
+
+		lockRetry: defaultLockRetry,
 	}
 }
 
@@ -114,15 +118,16 @@ type mutateFunc func(current *eurodns.Zone) ([]zonediff.Change, error)
 
 // write reads the zone fresh, applies the RRset changes and saves the whole
 // zone with If-Match, retrying from a fresh read when the gate reports that
-// the zone changed meanwhile. Records outside the change are written back
-// unchanged.
+// the zone changed meanwhile or that another process holds its lock. Records
+// outside the change are written back unchanged.
 func (a *apiClient) write(ctx context.Context, zoneName string, mutate mutateFunc) error {
 	lock := a.writeLock(zoneName)
 	lock.Lock()
 	defer lock.Unlock()
 	defer a.invalidate(zoneName)
 
-	for attempt := 0; ; attempt++ {
+	waiter := a.lockRetry.start("save", zoneName)
+	for preconditions := 0; ; {
 		current, err := a.client.GetZone(ctx, zoneName)
 		if err != nil {
 			return err
@@ -132,11 +137,42 @@ func (a *apiClient) write(ctx context.Context, zoneName string, mutate mutateFun
 			return err
 		}
 		desired := zonediff.Apply(zoneName, current, changes)
-		err = a.client.SaveZone(ctx, zoneName, desired, eurodns.WithIfMatch(current.ETag))
-		if err == nil {
+		hint := &retryAfterHint{}
+		err = a.client.SaveZone(withRetryAfterHint(ctx, hint), zoneName, desired, eurodns.WithIfMatch(current.ETag))
+		switch {
+		case err == nil:
 			return nil
+		case isZoneLocked(err):
+			if err := waiter.wait(ctx, err, hint.get()); err != nil {
+				return err
+			}
+		case eurodns.IsPreconditionFailed(err):
+			preconditions++
+			if preconditions >= maxPreconditionRetries {
+				return err
+			}
+		default:
+			return err
 		}
-		if !eurodns.IsPreconditionFailed(err) || attempt+1 >= maxPreconditionRetries {
+	}
+}
+
+// adopt asks the gate to adopt RRsets, waiting while another process holds
+// the zone lock.
+func (a *apiClient) adopt(ctx context.Context, zoneName string, req eurodns.AdoptRequest) error {
+	lock := a.writeLock(zoneName)
+	lock.Lock()
+	defer lock.Unlock()
+	defer a.invalidate(zoneName)
+
+	waiter := a.lockRetry.start("adopt", zoneName)
+	for {
+		hint := &retryAfterHint{}
+		err := a.client.Adopt(withRetryAfterHint(ctx, hint), zoneName, req)
+		if err == nil || !isZoneLocked(err) {
+			return err
+		}
+		if err := waiter.wait(ctx, err, hint.get()); err != nil {
 			return err
 		}
 	}

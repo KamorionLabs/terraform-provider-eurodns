@@ -38,6 +38,15 @@ type fakeGate struct {
 	fail412       int // number of PUTs to refuse with 412
 	preconditions int
 	adopted       []eurodns.AdoptRRset
+	saves         int // PUTs that reached EuroDNS
+
+	// failLocked writes (PUT or adopt) are refused with 503 zone_locked, as
+	// when another process holds the zone lock; failUnavailable with a 503
+	// of another reason.
+	failLocked      int
+	failUnavailable int
+	lockRefusals    int
+	retryAfter      string
 }
 
 func newFakeGate(t *testing.T, upstream *eurodnstest.Server, features ...string) *fakeGate {
@@ -79,6 +88,9 @@ func (g *fakeGate) serve(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(eurodns.GateInfo{Version: "test", Features: g.features})
 
 	case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, eurodns.GateInfoPath+"/zones/") && strings.HasSuffix(r.URL.Path, "/adopt"):
+		if g.refuseUnavailable(w) {
+			return
+		}
 		var req eurodns.AdoptRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			gateError(w, http.StatusBadRequest, "invalid", err.Error())
@@ -101,6 +113,9 @@ func (g *fakeGate) serve(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(z)
 
 	case r.URL.Path == "/dns-zones/"+testZone && r.Method == http.MethodPut:
+		if g.refuseUnavailable(w) {
+			return
+		}
 		if m := r.Header.Get("If-Match"); m != "" && m != g.etag() {
 			g.preconditions++
 			gateError(w, http.StatusPreconditionFailed, "precondition", "zone changed")
@@ -143,10 +158,37 @@ func (g *fakeGate) serve(w http.ResponseWriter, r *http.Request) {
 		for _, k := range created {
 			g.owned[k] = true
 		}
+		g.saves++
 		g.version++
 		w.WriteHeader(http.StatusNoContent)
 
 	default:
 		gateError(w, http.StatusNotFound, "not_found", r.Method+" "+r.URL.Path)
 	}
+}
+
+// refuseUnavailable answers 503 while failLocked or failUnavailable remain.
+func (g *fakeGate) refuseUnavailable(w http.ResponseWriter) bool {
+	switch {
+	case g.failLocked > 0:
+		g.failLocked--
+		g.lockRefusals++
+		if g.retryAfter != "" {
+			w.Header().Set("Retry-After", g.retryAfter)
+		}
+		gateError(w, http.StatusServiceUnavailable, reasonZoneLocked, "zone "+testZone+" is locked by another write")
+		return true
+	case g.failUnavailable > 0:
+		g.failUnavailable--
+		gateError(w, http.StatusServiceUnavailable, "maintenance", "gate in maintenance")
+		return true
+	}
+	return false
+}
+
+// set runs f with the gate locked, to change its behaviour between steps.
+func (g *fakeGate) set(f func(*fakeGate)) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	f(g)
 }

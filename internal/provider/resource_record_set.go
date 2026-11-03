@@ -256,12 +256,11 @@ func (r *recordSetResource) ImportState(ctx context.Context, req resource.Import
 		return
 	}
 	if r.api.mode == modeGate && r.api.hasFeature(eurodns.FeatureAdopt) {
-		err := r.api.client.Adopt(ctx, zone, eurodns.AdoptRequest{RRsets: []eurodns.AdoptRRset{{Host: host, Type: typ}}})
+		err := r.api.adopt(ctx, zone, eurodns.AdoptRequest{RRsets: []eurodns.AdoptRRset{{Host: host, Type: typ}}})
 		if err != nil {
 			addAPIError(&resp.Diagnostics, "The gate refused to adopt the record set", err)
 			return
 		}
-		r.api.invalidate(zone)
 	}
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), recordSetID(zone, rrset.Key{Host: host, Type: typ}))...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("zone"), zone)...)

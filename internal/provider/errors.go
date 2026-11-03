@@ -19,7 +19,7 @@ var gateReasonHelp = map[string]string{
 	"precondition":     "The zone changed during the write and the retries were exhausted. Run the operation again.",
 	"too_many_changes": "The change exceeds the maximum number of RRset changes per request allowed for this identity.",
 	"invalid_zone":     "EuroDNS rejected the resulting zone. See the validation report below.",
-	"zone_locked":      "Another write on this zone holds the gate lock. Retry later.",
+	"zone_locked":      "Another write on this zone (for example another Terraform run) held the gate lock for longer than the provider waits for it (about 5 minutes). Retry later.",
 }
 
 // addAPIError turns an API error into a readable diagnostic.

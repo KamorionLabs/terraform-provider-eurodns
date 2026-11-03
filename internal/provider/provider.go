@@ -247,7 +247,7 @@ func (p *eurodnsProvider) Configure(ctx context.Context, req provider.ConfigureR
 		return
 	}
 
-	client, err := eurodns.New(
+	client, err := newClient(
 		eurodns.WithBaseURL(s.baseURL),
 		eurodns.WithAuth(s.auth),
 		eurodns.WithRateLimit(s.interval, s.burst),
@@ -277,6 +277,13 @@ func (p *eurodnsProvider) Configure(ctx context.Context, req provider.ConfigureR
 	api := newAPIClient(client, s.mode, features)
 	resp.ResourceData = api
 	resp.DataSourceData = api
+}
+
+// newClient builds the EuroDNS client with the transport that records the
+// gate's Retry-After (see retryAfterTransport).
+func newClient(opts ...eurodns.Option) (*eurodns.Client, error) {
+	hc := &http.Client{Transport: retryAfterTransport{base: http.DefaultTransport}, Timeout: 60 * time.Second}
+	return eurodns.New(append([]eurodns.Option{eurodns.WithHTTPClient(hc)}, opts...)...)
 }
 
 // resolve merges configuration and environment and enforces mode exclusivity.
