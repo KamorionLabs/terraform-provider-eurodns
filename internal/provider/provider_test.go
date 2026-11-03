@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 
 	eurodns "github.com/KamorionLabs/eurodns-go"
 	"github.com/KamorionLabs/eurodns-go/eurodnstest"
@@ -249,6 +250,160 @@ func TestAccRecordSet_typeChangeInPlace(t *testing.T) {
 					checkUpstream(up, "site", "A"),
 					checkUpstream(up, "site", "CNAME", "relay.example.net."),
 					checkUnmanagedPreserved(up, before),
+				),
+			},
+		},
+	})
+}
+
+func TestAccRecordSet_hostChangeInPlace(t *testing.T) {
+	clearEnv(t)
+	up := seededUpstream(t)
+	before := up.Zone(testZone).Records
+	p := directProvider(up.URL)
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: testProviders,
+		CheckDestroy:             checkUpstream(up, "new", "A"),
+		Steps: []resource.TestStep{
+			{
+				Config: p + recordSet("site", "old", "A", 600, "192.0.2.1"),
+				Check:  checkUpstream(up, "old", "A", "192.0.2.1"),
+			},
+			{
+				Config: p + recordSet("site", "new", "A", 600, "192.0.2.1"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction("eurodns_record_set.site", plancheck.ResourceActionUpdate),
+						plancheck.ExpectUnknownValue("eurodns_record_set.site", tfjsonpath.New("id")),
+					},
+				},
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("eurodns_record_set.site", "id", "example.com/new/A"),
+					checkUpstream(up, "old", "A"),
+					checkUpstream(up, "new", "A", "192.0.2.1"),
+					checkUnmanagedPreserved(up, before),
+				),
+			},
+			{
+				// Host and type together, still one update.
+				Config: p + recordSet("site", "edge", "CNAME", 600, "relay.example.net."),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction("eurodns_record_set.site", plancheck.ResourceActionUpdate)},
+				},
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("eurodns_record_set.site", "id", "example.com/edge/CNAME"),
+					checkUpstream(up, "new", "A"),
+					checkUpstream(up, "edge", "CNAME", "relay.example.net."),
+					checkUnmanagedPreserved(up, before),
+				),
+			},
+			{
+				Config: p + recordSet("site", "new", "A", 600, "192.0.2.1"),
+				Check:  checkUpstream(up, "new", "A", "192.0.2.1"),
+			},
+			{
+				// Moving onto an RRset this configuration does not manage is refused.
+				Config:      p + recordSet("site", "legacy", "TXT", 600, "overwrite"),
+				ExpectError: regexp.MustCompile(`already exists`),
+			},
+		},
+	})
+	if got := upstreamSet(up, "legacy", "TXT"); fmt.Sprint(got) != `[keep-me]` {
+		t.Fatalf("existing RRset was modified: %v", got)
+	}
+}
+
+func TestAccRecordSet_gateHostChangeInPlace(t *testing.T) {
+	clearEnv(t)
+	up := seededUpstream(t)
+	g := newFakeGate(t, up, eurodns.FeatureIfMatch, eurodns.FeatureOwnership, eurodns.FeatureAdopt)
+	p := gateProvider(g.URL)
+	var saves int
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: testProviders,
+		Steps: []resource.TestStep{
+			{
+				Config: p + recordSet("acme", "_acme-challenge.old", "TXT", 600, "token"),
+				Check:  func(*terraform.State) error { saves = g.saves; return nil },
+			},
+			{
+				// The gate lets the owner delete the old RRset and create the
+				// new one in the same save.
+				Config: p + recordSet("acme", "_acme-challenge.new", "TXT", 600, "token"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction("eurodns_record_set.acme", plancheck.ResourceActionUpdate)},
+				},
+				Check: resource.ComposeTestCheckFunc(
+					checkUpstream(up, "_acme-challenge.old", "TXT"),
+					checkUpstream(up, "_acme-challenge.new", "TXT", "token"),
+					func(*terraform.State) error {
+						if g.saves-saves != 1 {
+							return fmt.Errorf("expected one zone save, got %d", g.saves-saves)
+						}
+						return nil
+					},
+				),
+			},
+		},
+	})
+}
+
+// A host unknown at plan time (for example from an ACM certificate being
+// created) plans an update, not a replacement, and writes nothing when it
+// resolves to the current host.
+func TestAccRecordSet_unknownHostUnchanged(t *testing.T) {
+	clearEnv(t)
+	up := seededUpstream(t)
+	g := newFakeGate(t, up, eurodns.FeatureIfMatch, eurodns.FeatureOwnership)
+	p := gateProvider(g.URL)
+	config := func(trigger string) string {
+		return p + fmt.Sprintf(`
+resource "terraform_data" "host" {
+  input            = "_validation.www"
+  triggers_replace = [%q]
+}
+
+resource "eurodns_record_set" "validation" {
+  zone   = %q
+  host   = terraform_data.host.output
+  type   = "CNAME"
+  ttl    = 600
+  values = ["_token.acm-validations.example.net."]
+}
+`, trigger, testZone)
+	}
+	var saves int
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: testProviders,
+		Steps: []resource.TestStep{
+			{
+				Config: config("cert-1"),
+				Check: resource.ComposeTestCheckFunc(
+					checkUpstream(up, "_validation.www", "CNAME", "_token.acm-validations.example.net."),
+					func(*terraform.State) error { saves = g.saves; return nil },
+				),
+			},
+			{
+				Config: config("cert-2"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction("terraform_data.host", plancheck.ResourceActionReplace),
+						plancheck.ExpectResourceAction("eurodns_record_set.validation", plancheck.ResourceActionUpdate),
+						plancheck.ExpectUnknownValue("eurodns_record_set.validation", tfjsonpath.New("host")),
+					},
+				},
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("eurodns_record_set.validation", "id", "example.com/_validation.www/CNAME"),
+					checkUpstream(up, "_validation.www", "CNAME", "_token.acm-validations.example.net."),
+					func(*terraform.State) error {
+						if g.saves != saves {
+							return fmt.Errorf("expected no zone save, got %d", g.saves-saves)
+						}
+						return nil
+					},
 				),
 			},
 		},
