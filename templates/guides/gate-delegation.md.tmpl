@@ -1,0 +1,68 @@
+---
+page_title: "Managing gate roles and bindings from a pipeline stack"
+subcategory: ""
+description: |-
+  Let the Terraform stack that creates CI pipelines also create, in the same apply, the eurodns-gate role and binding of each pipeline.
+---
+
+# Managing gate roles and bindings from a pipeline stack
+
+A stack that creates CI pipelines usually creates, for each one, a cloud role and a policy scoped to what
+that pipeline may touch. `eurodns_gate_role` and `eurodns_gate_binding` do the same for DNS: in the same
+apply, the stack creates the pipeline's service connection and the gate role and binding that let that
+service connection write only its own DNS names.
+
+The resources reference the gate configuration below; the issuer `azure-devops` (Azure DevOps OIDC) must
+accept both the stack's service connection and the pipelines' ones (`bound_claims.sub`), each dedicated to the
+gate (see the gate documentation on Azure DevOps OIDC).
+
+The two resources only work in gate mode and need an eurodns-gate that serves the delegation API (feature
+`policy-delegation`).
+
+## How the gate trusts the stack
+
+The gate administrators declare a **delegation** in the gate configuration file (`policy.delegations`, see
+the gate `docs/CONFIG.md`). It names the identities allowed to use it (here the service connection of the
+stack) and bounds what they may create:
+
+- `allow.zones`, `allow.actions`, `allow.records`: what a delegated role may grant (never `policy.*`, always
+  inside `policy.bounds`);
+- `allow.binding_subjects`: which identities a delegated binding may target, for example every service
+  connection under a prefix dedicated to the gate;
+- `allow.teams`: which owner teams a binding may use. With `from_subject`, the team is derived from the bound
+  subject, so each pipeline owns the records it creates and cannot change those of another pipeline;
+- `allow.roles`, `allow.groups`, `allow.max_objects`.
+
+{{ codefile "yaml" "examples/gate-delegation/gate-config.yaml" }}
+
+Changes made through a delegation are validated against it, then activated at once as a new managed policy
+revision, **without approval** (whatever `policy.require_approval` says): the review happened when the
+delegation itself was merged in the gate configuration. Every change is audited (`policy.delegated.*`) and
+shows up in the revision history of the gate UI with its impact analysis. Humans see delegated objects but
+cannot change them, unless a policy administrator explicitly takes them over; the resources then disappear
+from the state at the next refresh (and a new apply fails with `name_taken` until they are removed from the
+configuration).
+
+## The module
+
+One module per pipeline creates the service connection, the role and the binding:
+
+{{ tffile "examples/gate-delegation/modules/pipeline/main.tf" }}
+
+The stack calls it once per pipeline, with its own identity being the subject of the delegation:
+
+{{ tffile "examples/gate-delegation/main.tf" }}
+
+The pipeline created this way then uses its service connection with `gate.auth.azure_devops` (see
+[Authenticating to eurodns-gate](gate-authentication)) and can write `web.apps` and its ACME challenge, nothing
+else.
+
+## Behaviour
+
+- Names are stable identifiers in the gate (`name`, import by name). Roles share their namespace with the base
+  and managed roles of the gate.
+- Every update sends the `etag` of the state as `If-Match`: a change made in the gate since the last refresh is
+  reported instead of being overwritten. `terraform plan` shows such drift.
+- Writes that race with other policy changes on the gate (several replicas) are retried by the gate, then by
+  the provider (`409 policy_busy`).
+- Deleting the binding removes the pipeline's gate identity at once; RRsets it owns stay owned by its team.

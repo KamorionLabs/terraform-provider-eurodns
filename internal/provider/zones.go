@@ -36,6 +36,9 @@ type apiClient struct {
 	writes map[string]*sync.Mutex
 
 	lockRetry lockRetryPolicy
+
+	baseURL        string // gate URL, for the policy API
+	delegatedRetry delegatedRetry
 }
 
 func newAPIClient(c *eurodns.Client, mode string, features []string) *apiClient {
@@ -51,7 +54,8 @@ func newAPIClient(c *eurodns.Client, mode string, features []string) *apiClient 
 		gen:      map[string]uint64{},
 		writes:   map[string]*sync.Mutex{},
 
-		lockRetry: defaultLockRetry,
+		lockRetry:      defaultLockRetry,
+		delegatedRetry: defaultDelegatedRetry,
 	}
 }
 

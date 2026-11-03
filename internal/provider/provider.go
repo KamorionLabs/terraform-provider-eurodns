@@ -275,6 +275,7 @@ func (p *eurodnsProvider) Configure(ctx context.Context, req provider.ConfigureR
 	}
 
 	api := newAPIClient(client, s.mode, features)
+	api.baseURL = s.baseURL
 	resp.ResourceData = api
 	resp.DataSourceData = api
 }
@@ -457,7 +458,7 @@ func firstNonEmpty(v ...string) string {
 }
 
 func (p *eurodnsProvider) Resources(context.Context) []func() resource.Resource {
-	return []func() resource.Resource{newRecordSetResource}
+	return []func() resource.Resource{newRecordSetResource, newGateRoleResource, newGateBindingResource}
 }
 
 func (p *eurodnsProvider) DataSources(context.Context) []func() datasource.DataSource {

@@ -10,7 +10,8 @@ One provider, two connection modes:
   ownership and safe writes.
 
 Resources and data sources are identical in both modes: switching is a change of the
-provider block, with no state migration.
+provider block, with no state migration. The exceptions are `eurodns_gate_role` and
+`eurodns_gate_binding`, which manage the gate policy itself and only exist in gate mode.
 
 > Status: **pre-alpha**. Not yet tested against the live EuroDNS API.
 
@@ -124,6 +125,29 @@ the gate (UI or API, with preview), then export ready-made HCL with `import` blo
 from `GET /api/v1/zones/<zone>/terraform?team=<team>`. Already-adopted RRsets import
 without the adopt permission. The first plan must show only imports and no change.
 See the gate's [onboarding guide](https://github.com/KamorionLabs/eurodns-gate/blob/main/docs/ONBOARDING.md).
+
+## Gate roles and bindings
+
+A stack that creates CI pipelines can create, in the same apply, each pipeline's gate
+role and binding, the way it creates each pipeline's cloud role and scoped policy:
+
+```hcl
+resource "eurodns_gate_role" "web" {
+  name  = "eurodns-gate-web"
+  rules = [{ zones = ["example.com"], actions = ["dns.read", "dns.record.write"], hosts = ["web.apps"], types = ["CNAME"] }]
+}
+
+resource "eurodns_gate_binding" "web" {
+  name     = "eurodns-gate-web"
+  role     = eurodns_gate_role.web.name
+  team     = "eurodns-gate-web"
+  subjects = [{ issuer = "azure-devops", claims = { sub = ["sc://org/project/eurodns-gate-web"] } }]
+}
+```
+
+The stack's identity must be a subject of a `policy.delegations` entry of the gate,
+which bounds what it may create; changes are activated without approval. See the
+[delegation guide](docs/guides/gate-delegation.md).
 
 ## Related repositories
 

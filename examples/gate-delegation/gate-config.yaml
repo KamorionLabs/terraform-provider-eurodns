@@ -1,0 +1,24 @@
+# Gate configuration (base file): the delegation of the stack that creates
+# pipelines.
+policy:
+  editable: true
+  bounds:
+    zones: ["example.com"]
+    actions: [dns.read, dns.record.write, ui.read]
+  delegations:
+    - name: workloads-pipelines
+      description: Gate identities of the pipelines created by the workloads stack
+      subjects:
+        - issuer: azure-devops
+          claims: {sub: ["sc://org/project/workloads-pipelines"]}
+      allow:
+        zones: ["example.com"]
+        actions: [dns.read, dns.record.write]
+        records: {hosts: ["**.apps"], types: [CNAME, TXT]}
+        binding_subjects:
+          - issuer: azure-devops
+            claims: {sub: ["sc://org/project/eurodns-gate-*"]}
+        teams:
+          from_subject:
+            claim: sub
+            regex: "^sc://[^/]+/[^/]+/(eurodns-gate-[a-z0-9-]+)$"
