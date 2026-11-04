@@ -13,7 +13,13 @@ Resources and data sources are identical in both modes: switching is a change of
 provider block, with no state migration. The exceptions are `eurodns_gate_role` and
 `eurodns_gate_binding`, which manage the gate policy itself and only exist in gate mode.
 
-> Status: **pre-alpha**. Not yet tested against the live EuroDNS API.
+> Status: **beta**. In production since November 2026 in gate mode: OpenTofu
+> pipelines writing certificate validation and site records through an
+> [eurodns-gate](https://github.com/KamorionLabs/eurodns-gate). Direct mode shares the
+> same client and record handling but has seen less use. Versions are still 0.x.
+
+Published on the [OpenTofu registry](https://search.opentofu.org/provider/kamorionlabs/eurodns/latest)
+as `kamorionlabs/eurodns`. It is not on the HashiCorp registry yet.
 
 ## Direct mode
 
@@ -47,6 +53,8 @@ provider "eurodns" {
       # azure_identity {
       #   scope = "api://<gate-app>/.default"  # Managed Identity, AKS Workload Identity,
       # }                                      # ADO workload identity federation, az CLI
+      # azure_devops {}                        # Azure DevOps OIDC token of a dedicated
+      #                                        # service connection, inside a job
       # token_file    = "/var/run/secrets/tokens/eurodns-gate"
       # token_command = ["my-token-helper", "--audience", "eurodns-gate"]
       # token         = var.gate_token
@@ -59,8 +67,13 @@ Token sources: `aws_web_identity` (AWS workloads and pipelines assuming an IAM
 role), `azure_identity` (Entra ID access token for the gate's app registration,
 through the Azure default credential chain: Managed Identity, AKS Workload Identity,
 Azure DevOps service connection in workload identity federation mode, Azure CLI),
-`token_file`, `token_command`, `token`. In Azure DevOps, use the Entra token
-obtained through the service connection, not the raw pipeline OIDC token.
+`azure_devops` (the OIDC token Azure DevOps issues for a service connection, with no
+cloud login; outside a job it falls back to the other method of the block, so the same
+configuration runs on a workstation), `token_file`, `token_command`, `token`. The
+Azure DevOps token has an audience shared by every service connection of the
+organization: use it only with service connections dedicated to the gate, as the
+gate's [configuration guide](https://github.com/KamorionLabs/eurodns-gate/blob/main/docs/CONFIG.md#azure-devops-oidc)
+explains.
 
 `app_id`/`api_key` and `gate` are mutually exclusive. At configuration time the
 provider queries `/.well-known/eurodns-gate` to check it is talking to a gate and
