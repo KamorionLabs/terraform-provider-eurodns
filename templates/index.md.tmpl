@@ -1,7 +1,7 @@
 ---
 page_title: "EuroDNS Provider"
 description: |-
-  Manage DNS records hosted at EuroDNS, directly or through eurodns-gate.
+  Manage DNS records hosted at EuroDNS, directly or through dns-gate.
 ---
 
 # EuroDNS Provider
@@ -14,11 +14,15 @@ One provider, two modes, the same resources:
 | Mode | Configuration | Credentials held by | Guarantees |
 |------|---------------|---------------------|------------|
 | Direct | `app_id` / `api_key` | Terraform | Records outside the configuration are written back unchanged; per-process write serialization only |
-| Gate | `gate` block | [eurodns-gate](https://github.com/KamorionLabs/eurodns-gate) | OIDC identity, RBAC per zone/name/type, the gate only changes RRsets it created or adopted, zone-level concurrency control |
+| Gate | `gate` block | [dns-gate](https://github.com/KamorionLabs/dns-gate) | OIDC identity, RBAC per zone/name/type, the gate only changes RRsets it created or adopted, zone-level concurrency control |
 
 The two modes are mutually exclusive. Switching mode only changes the provider block: the state keeps
 the same resource ids. RRsets created in direct mode are foreign to the gate and must be adopted
 (by importing them in gate mode) before the gate lets Terraform change them.
+
+The gate was formerly named eurodns-gate. The provider only recognizes a gate that serves
+`/.well-known/dns-gate`, so upgrade the gate first. The `DNS_GATE_*` environment variables replace the
+`EURODNS_GATE_*` ones, which are still read when the new ones are unset.
 
 ## Rate limit
 

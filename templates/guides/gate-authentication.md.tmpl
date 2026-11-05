@@ -1,11 +1,11 @@
 ---
-page_title: "Authenticating to eurodns-gate"
+page_title: "Authenticating to dns-gate"
 subcategory: ""
 description: |-
-  Choose how Terraform proves its identity to an eurodns-gate.
+  Choose how Terraform proves its identity to a dns-gate.
 ---
 
-# Authenticating to eurodns-gate
+# Authenticating to dns-gate
 
 In gate mode Terraform never holds the EuroDNS key: it sends a bearer token that the gate verifies
 (issuer, audience, claims) and maps to roles and owner teams. `gate.auth` takes exactly one method, plus optionally `azure_devops`
@@ -48,7 +48,7 @@ AKS workload identity:
 `sc://<organization>/<project>/<service connection>`). No cloud login is involved, so it suits pipelines that
 only manage DNS, on any cloud.
 
-The service connection id is `service_connection_id`, or else the `EURODNS_GATE_ADO_SERVICE_CONNECTION_ID`
+The service connection id is `service_connection_id`, or else the `DNS_GATE_ADO_SERVICE_CONNECTION_ID`
 environment variable: a variable group named after the pipeline can carry it, so the configuration and the
 pipeline YAML only use names. It applies inside an Azure DevOps job only. Elsewhere, for example on a workstation, the other method of the
 block is used, typically `azure_identity` with the Azure CLI login of the person running Terraform:

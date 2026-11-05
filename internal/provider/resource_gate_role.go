@@ -141,7 +141,7 @@ func (r *gateRoleResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 		MarkdownDescription: "Blast-radius limit (RRset changes per request), `0` for the gate default, at most 1000.",
 	}
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "A role of the eurodns-gate managed policy, owned by a policy delegation of the gate (gate mode only). " +
+		MarkdownDescription: "A role of the dns-gate managed policy, owned by a policy delegation of the gate (gate mode only). " +
 			"The gate validates it against the delegation of the provider identity and activates the change at once, " +
 			"without approval. Bind it with `eurodns_gate_binding`.",
 		Attributes: attrs,

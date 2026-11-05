@@ -1,7 +1,7 @@
 # Gate mode only. The provider identity must be a subject of a policy
 # delegation of the gate (policy.delegations); the role must stay within it.
 resource "eurodns_gate_role" "web" {
-  name        = "eurodns-gate-web"
+  name        = "dns-gate-web"
   description = "DNS names of the web pipeline"
   rules = [{
     zones   = ["example.com"]

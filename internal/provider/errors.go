@@ -10,7 +10,7 @@ import (
 	eurodns "github.com/KamorionLabs/eurodns-go"
 )
 
-// gateReasonHelp explains eurodns-gate refusal reasons to the user.
+// gateReasonHelp explains dns-gate refusal reasons to the user.
 var gateReasonHelp = map[string]string{
 	"forbidden":        "The gate policy does not allow this identity to perform this change (role scope or protected record).",
 	"foreign_rrset":    "This RRset exists in the zone but was not created or adopted through the gate. Ask a gate administrator to adopt it, then import it with `terraform import`.",

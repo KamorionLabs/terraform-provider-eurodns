@@ -17,8 +17,8 @@ policy:
         records: {hosts: ["**.apps"], types: [CNAME, TXT]}
         binding_subjects:
           - issuer: azure-devops
-            claims: {sub: ["sc://org/project/eurodns-gate-*"]}
+            claims: {sub: ["sc://org/project/dns-gate-*"]}
         teams:
           from_subject:
             claim: sub
-            regex: "^sc://[^/]+/[^/]+/(eurodns-gate-[a-z0-9-]+)$"
+            regex: "^sc://[^/]+/[^/]+/(dns-gate-[a-z0-9-]+)$"

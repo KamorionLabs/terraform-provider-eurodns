@@ -17,10 +17,10 @@ provider "aws" {
 
 provider "eurodns" {
   gate {
-    url = "https://eurodns-gate.example.com"
+    url = "https://dns-gate.example.com"
     auth {
       aws_web_identity {
-        audience = "eurodns-gate"
+        audience = "dns-gate"
       }
     }
   }

@@ -2,7 +2,7 @@
 page_title: "Managing gate roles and bindings from a pipeline stack"
 subcategory: ""
 description: |-
-  Let the Terraform stack that creates CI pipelines also create, in the same apply, the eurodns-gate role and binding of each pipeline.
+  Let the Terraform stack that creates CI pipelines also create, in the same apply, the dns-gate role and binding of each pipeline.
 ---
 
 # Managing gate roles and bindings from a pipeline stack
@@ -16,7 +16,7 @@ The resources reference the gate configuration below; the issuer `azure-devops` 
 accept both the stack's service connection and the pipelines' ones (`bound_claims.sub`), each dedicated to the
 gate (see the gate documentation on Azure DevOps OIDC).
 
-The two resources only work in gate mode and need an eurodns-gate that serves the delegation API (feature
+The two resources only work in gate mode and need a dns-gate that serves the delegation API (feature
 `policy-delegation`).
 
 ## How the gate trusts the stack
@@ -53,11 +53,11 @@ policy:
         records: {hosts: ["**.apps"], types: [CNAME, TXT]}
         binding_subjects:
           - issuer: azure-devops
-            claims: {sub: ["sc://org/project/eurodns-gate-*"]}
+            claims: {sub: ["sc://org/project/dns-gate-*"]}
         teams:
           from_subject:
             claim: sub
-            regex: "^sc://[^/]+/[^/]+/(eurodns-gate-[a-z0-9-]+)$"
+            regex: "^sc://[^/]+/[^/]+/(dns-gate-[a-z0-9-]+)$"
 ```
 
 Changes made through a delegation are validated against it, then activated at once as a new managed policy
@@ -91,13 +91,13 @@ variable "organization" { type = string }
 variable "pipeline_id" { type = number }
 variable "name" {
   type        = string
-  description = "Pipeline short name: the service connection is eurodns-gate-<name>."
+  description = "Pipeline short name: the service connection is dns-gate-<name>."
 }
 variable "zone" { type = string }
 variable "hosts" { type = list(string) }
 
 locals {
-  connection = "eurodns-gate-${var.name}"
+  connection = "dns-gate-${var.name}"
   subject    = "sc://${var.organization}/${var.project_name}/${local.connection}"
 }
 
@@ -106,8 +106,8 @@ locals {
 resource "azuredevops_serviceendpoint_generic" "gate" {
   project_id            = var.project_id
   service_endpoint_name = local.connection
-  server_url            = "https://eurodns-gate.example.com"
-  description           = "eurodns-gate identity of pipeline ${var.name}"
+  server_url            = "https://dns-gate.example.com"
+  description           = "dns-gate identity of pipeline ${var.name}"
 }
 
 resource "azuredevops_pipeline_authorization" "gate" {
@@ -150,9 +150,9 @@ The stack calls it once per pipeline, with its own identity being the subject of
 # delegation (here its own Azure DevOps service connection).
 provider "eurodns" {
   gate {
-    url = "https://eurodns-gate.example.com"
+    url = "https://dns-gate.example.com"
     auth {
-      azure_devops {} # EURODNS_GATE_ADO_SERVICE_CONNECTION_ID
+      azure_devops {} # DNS_GATE_ADO_SERVICE_CONNECTION_ID
     }
   }
 }
@@ -172,7 +172,7 @@ variable "project_id" { type = string }
 ```
 
 The pipeline created this way then uses its service connection with `gate.auth.azure_devops` (see
-[Authenticating to eurodns-gate](gate-authentication)) and can write `web.apps` and its ACME challenge, nothing
+[Authenticating to dns-gate](gate-authentication)) and can write `web.apps` and its ACME challenge, nothing
 else.
 
 ## Behaviour

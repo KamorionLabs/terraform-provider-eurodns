@@ -24,7 +24,7 @@ const (
 	testZone   = "example.com"
 )
 
-// fakeGate is a minimal eurodns-gate: bearer auth, ETag/If-Match on zones,
+// fakeGate is a minimal dns-gate: bearer auth, ETag/If-Match on zones,
 // RRset ownership (records seeded upstream are foreign) and adoption.
 type fakeGate struct {
 	*httptest.Server

@@ -94,7 +94,7 @@ func (r *gateBindingResource) Schema(_ context.Context, _ resource.SchemaRequest
 			"claims": schema.MapAttribute{
 				Required:            true,
 				ElementType:         types.ListType{ElemType: types.StringType},
-				MarkdownDescription: "Claim name to accepted globs, for example `{ sub = [\"sc://org/project/eurodns-gate-web\"] }`.",
+				MarkdownDescription: "Claim name to accepted globs, for example `{ sub = [\"sc://org/project/dns-gate-web\"] }`.",
 				Validators:          []validator.Map{mapvalidator.SizeAtLeast(1)},
 			},
 		}},
@@ -106,7 +106,7 @@ func (r *gateBindingResource) Schema(_ context.Context, _ resource.SchemaRequest
 		Validators:          []validator.List{listvalidator.SizeAtLeast(1)},
 	}
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "A binding of the eurodns-gate managed policy, owned by a policy delegation of the gate " +
+		MarkdownDescription: "A binding of the dns-gate managed policy, owned by a policy delegation of the gate " +
 			"(gate mode only): it grants a role, acting for a team, to identities. The gate validates it against the " +
 			"delegation of the provider identity and activates the change at once, without approval.",
 		Attributes: attrs,

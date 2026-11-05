@@ -2,7 +2,7 @@
 page_title: "Managing gate roles and bindings from a pipeline stack"
 subcategory: ""
 description: |-
-  Let the Terraform stack that creates CI pipelines also create, in the same apply, the eurodns-gate role and binding of each pipeline.
+  Let the Terraform stack that creates CI pipelines also create, in the same apply, the dns-gate role and binding of each pipeline.
 ---
 
 # Managing gate roles and bindings from a pipeline stack
@@ -16,7 +16,7 @@ The resources reference the gate configuration below; the issuer `azure-devops` 
 accept both the stack's service connection and the pipelines' ones (`bound_claims.sub`), each dedicated to the
 gate (see the gate documentation on Azure DevOps OIDC).
 
-The two resources only work in gate mode and need an eurodns-gate that serves the delegation API (feature
+The two resources only work in gate mode and need a dns-gate that serves the delegation API (feature
 `policy-delegation`).
 
 ## How the gate trusts the stack
@@ -54,7 +54,7 @@ The stack calls it once per pipeline, with its own identity being the subject of
 {{ tffile "examples/gate-delegation/main.tf" }}
 
 The pipeline created this way then uses its service connection with `gate.auth.azure_devops` (see
-[Authenticating to eurodns-gate](gate-authentication)) and can write `web.apps` and its ACME challenge, nothing
+[Authenticating to dns-gate](gate-authentication)) and can write `web.apps` and its ACME challenge, nothing
 else.
 
 ## Behaviour

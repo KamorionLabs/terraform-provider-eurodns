@@ -4,14 +4,14 @@
 # Terraform, so the same configuration works in both places.
 provider "eurodns" {
   gate {
-    url = "https://eurodns-gate.example.com"
+    url = "https://dns-gate.example.com"
 
     auth {
-      # service_connection_id defaults to EURODNS_GATE_ADO_SERVICE_CONNECTION_ID,
+      # service_connection_id defaults to DNS_GATE_ADO_SERVICE_CONNECTION_ID,
       # for example from a variable group of the pipeline.
       azure_devops {}
       azure_identity {
-        scope = "api://eurodns-gate/.default"
+        scope = "api://dns-gate/.default"
       }
     }
   }

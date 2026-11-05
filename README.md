@@ -5,7 +5,7 @@ Terraform and OpenTofu provider for [EuroDNS](https://www.eurodns.com) DNS zones
 One provider, two connection modes:
 
 - **direct**: talks to the EuroDNS API with an application id and API key;
-- **gate**: talks to an [eurodns-gate](https://github.com/KamorionLabs/eurodns-gate)
+- **gate**: talks to a [dns-gate](https://github.com/KamorionLabs/dns-gate)
   with a short-lived OIDC token; the gate holds the EuroDNS key and enforces RBAC,
   ownership and safe writes.
 
@@ -15,7 +15,7 @@ provider block, with no state migration. The exceptions are `eurodns_gate_role` 
 
 > Status: **beta**. In production since November 2026 in gate mode: OpenTofu
 > pipelines writing certificate validation and site records through an
-> [eurodns-gate](https://github.com/KamorionLabs/eurodns-gate). Direct mode shares the
+> [dns-gate](https://github.com/KamorionLabs/dns-gate). Direct mode shares the
 > same client and record handling but has seen less use. Versions are still 0.x.
 
 Published on the [OpenTofu registry](https://search.opentofu.org/provider/kamorionlabs/eurodns/latest)
@@ -43,20 +43,20 @@ provider "eurodns" {
 ```hcl
 provider "eurodns" {
   gate {
-    url = "https://eurodns-gate.example.com"   # or EURODNS_GATE_URL
+    url = "https://dns-gate.example.com"   # or DNS_GATE_URL
 
     auth {
       # One token source:
       aws_web_identity {
-        audience = "eurodns-gate"              # sts:GetWebIdentityToken
+        audience = "dns-gate"              # sts:GetWebIdentityToken
       }
       # azure_identity {
       #   scope = "api://<gate-app>/.default"  # Managed Identity, AKS Workload Identity,
       # }                                      # ADO workload identity federation, az CLI
       # azure_devops {}                        # Azure DevOps OIDC token of a dedicated
       #                                        # service connection, inside a job
-      # token_file    = "/var/run/secrets/tokens/eurodns-gate"
-      # token_command = ["my-token-helper", "--audience", "eurodns-gate"]
+      # token_file    = "/var/run/secrets/tokens/dns-gate"
+      # token_command = ["my-token-helper", "--audience", "dns-gate"]
       # token         = var.gate_token
     }
   }
@@ -72,12 +72,18 @@ cloud login; outside a job it falls back to the other method of the block, so th
 configuration runs on a workstation), `token_file`, `token_command`, `token`. The
 Azure DevOps token has an audience shared by every service connection of the
 organization: use it only with service connections dedicated to the gate, as the
-gate's [configuration guide](https://github.com/KamorionLabs/eurodns-gate/blob/main/docs/CONFIG.md#azure-devops-oidc)
+gate's [configuration guide](https://github.com/KamorionLabs/dns-gate/blob/main/docs/CONFIG.md#azure-devops-oidc)
 explains.
 
 `app_id`/`api_key` and `gate` are mutually exclusive. At configuration time the
-provider queries `/.well-known/eurodns-gate` to check it is talking to a gate and
+provider queries `/.well-known/dns-gate` to check it is talking to a gate and
 which features it supports.
+
+The gate was formerly named eurodns-gate. This provider only recognizes a gate that
+serves `/.well-known/dns-gate`: upgrade the gate before the provider. The variables
+`DNS_GATE_URL`, `DNS_GATE_TOKEN`, `DNS_GATE_TOKEN_FILE` and
+`DNS_GATE_ADO_SERVICE_CONNECTION_ID` replace their `EURODNS_GATE_*` names, which are
+still read when the new ones are unset.
 
 ## Managing records
 
@@ -137,7 +143,7 @@ To take over a whole zone, the recommended path keeps adoption with admins: adop
 the gate (UI or API, with preview), then export ready-made HCL with `import` blocks
 from `GET /api/v1/zones/<zone>/terraform?team=<team>`. Already-adopted RRsets import
 without the adopt permission. The first plan must show only imports and no change.
-See the gate's [onboarding guide](https://github.com/KamorionLabs/eurodns-gate/blob/main/docs/ONBOARDING.md).
+See the gate's [onboarding guide](https://github.com/KamorionLabs/dns-gate/blob/main/docs/ONBOARDING.md).
 
 ## Gate roles and bindings
 
@@ -146,15 +152,15 @@ role and binding, the way it creates each pipeline's cloud role and scoped polic
 
 ```hcl
 resource "eurodns_gate_role" "web" {
-  name  = "eurodns-gate-web"
+  name  = "dns-gate-web"
   rules = [{ zones = ["example.com"], actions = ["dns.read", "dns.record.write"], hosts = ["web.apps"], types = ["CNAME"] }]
 }
 
 resource "eurodns_gate_binding" "web" {
-  name     = "eurodns-gate-web"
+  name     = "dns-gate-web"
   role     = eurodns_gate_role.web.name
-  team     = "eurodns-gate-web"
-  subjects = [{ issuer = "azure-devops", claims = { sub = ["sc://org/project/eurodns-gate-web"] } }]
+  team     = "dns-gate-web"
+  subjects = [{ issuer = "azure-devops", claims = { sub = ["sc://org/project/dns-gate-web"] } }]
 }
 ```
 
@@ -165,7 +171,7 @@ which bounds what it may create; changes are activated without approval. See the
 ## Related repositories
 
 - [eurodns-go](https://github.com/KamorionLabs/eurodns-go): the Go client used by this provider.
-- [eurodns-gate](https://github.com/KamorionLabs/eurodns-gate): the gateway, its [design](https://github.com/KamorionLabs/eurodns-gate/blob/main/docs/DESIGN.md) and [ACME guide](https://github.com/KamorionLabs/eurodns-gate/blob/main/docs/ACME.md).
+- [dns-gate](https://github.com/KamorionLabs/dns-gate): the gateway, its [design](https://github.com/KamorionLabs/dns-gate/blob/main/docs/DESIGN.md) and [ACME guide](https://github.com/KamorionLabs/dns-gate/blob/main/docs/ACME.md).
 
 ## License
 

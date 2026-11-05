@@ -23,14 +23,34 @@ const (
 	envAppID          = "EURODNS_APP_ID"
 	envAPIKey         = "EURODNS_API_KEY"
 	envBaseURL        = "EURODNS_BASE_URL"
-	envGateURL        = "EURODNS_GATE_URL"
-	envGateToken      = "EURODNS_GATE_TOKEN"
-	envGateTokenFile  = "EURODNS_GATE_TOKEN_FILE"
+	envGateURL        = "DNS_GATE_URL"
+	envGateToken      = "DNS_GATE_TOKEN"
+	envGateTokenFile  = "DNS_GATE_TOKEN_FILE"
 	defaultInterval   = 1100 * time.Millisecond
 	defaultBurst      = 5
 	defaultMaxRetries = 4
 	defaultSigningAlg = "RS256"
 )
+
+// legacyGateEnv maps the gate variables to the names they had before the
+// gate was renamed dns-gate. They are still read, after the new names.
+var legacyGateEnv = map[string]string{
+	envGateURL:                "EURODNS_GATE_URL",
+	envGateToken:              "EURODNS_GATE_TOKEN",
+	envGateTokenFile:          "EURODNS_GATE_TOKEN_FILE",
+	envADOServiceConnectionID: "EURODNS_GATE_ADO_SERVICE_CONNECTION_ID",
+}
+
+// gateEnv reads a gate variable, falling back to its legacy EURODNS_GATE_ name.
+func gateEnv(name string) string {
+	if v := os.Getenv(name); v != "" {
+		return v
+	}
+	if legacy, ok := legacyGateEnv[name]; ok {
+		return os.Getenv(legacy)
+	}
+	return ""
+}
 
 var _ provider.Provider = (*eurodnsProvider)(nil)
 
@@ -101,7 +121,7 @@ func (p *eurodnsProvider) Metadata(_ context.Context, _ provider.MetadataRequest
 func (p *eurodnsProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages DNS records hosted at EuroDNS, either directly with an API key " +
-			"(`app_id`/`api_key`) or through an [eurodns-gate](https://github.com/KamorionLabs/eurodns-gate) " +
+			"(`app_id`/`api_key`) or through a [dns-gate](https://github.com/KamorionLabs/dns-gate) " +
 			"instance (`gate` block) that holds the EuroDNS key and enforces RBAC and record ownership. " +
 			"The two modes are mutually exclusive and expose the same resources.",
 		Attributes: map[string]schema.Attribute{
@@ -134,18 +154,18 @@ func (p *eurodnsProvider) Schema(_ context.Context, _ provider.SchemaRequest, re
 		},
 		Blocks: map[string]schema.Block{
 			"gate": schema.SingleNestedBlock{
-				MarkdownDescription: "Gate mode: talk to an eurodns-gate instead of EuroDNS. Mutually exclusive with `app_id`/`api_key`.",
+				MarkdownDescription: "Gate mode: talk to a dns-gate instead of EuroDNS. Mutually exclusive with `app_id`/`api_key`.",
 				Attributes: map[string]schema.Attribute{
 					"url": schema.StringAttribute{
 						Optional:            true,
-						MarkdownDescription: "eurodns-gate base URL. Env: `EURODNS_GATE_URL`.",
+						MarkdownDescription: "dns-gate base URL. Env: `DNS_GATE_URL`.",
 					},
 				},
 				Blocks: map[string]schema.Block{
 					"auth": schema.SingleNestedBlock{
 						MarkdownDescription: "How to obtain the bearer token sent to the gate. Exactly one method, plus " +
 							"optionally `azure_devops`, which takes precedence inside an Azure DevOps job. " +
-							"Without this block, `EURODNS_GATE_TOKEN` or `EURODNS_GATE_TOKEN_FILE` is used.",
+							"Without this block, `DNS_GATE_TOKEN` or `DNS_GATE_TOKEN_FILE` is used.",
 						Attributes: map[string]schema.Attribute{
 							"token": schema.StringAttribute{
 								Optional:            true,
@@ -191,7 +211,7 @@ func (p *eurodnsProvider) Schema(_ context.Context, _ provider.SchemaRequest, re
 								Attributes: map[string]schema.Attribute{
 									"scope": schema.StringAttribute{
 										Optional:            true,
-										MarkdownDescription: "Scope of the gate application, for example `api://eurodns-gate/.default`. Required in this block.",
+										MarkdownDescription: "Scope of the gate application, for example `api://dns-gate/.default`. Required in this block.",
 									},
 									"tenant_id": schema.StringAttribute{
 										Optional:            true,
@@ -212,7 +232,7 @@ func (p *eurodnsProvider) Schema(_ context.Context, _ provider.SchemaRequest, re
 									"service_connection_id": schema.StringAttribute{
 										Optional: true,
 										MarkdownDescription: "Id of the service connection the token is issued for. Defaults to the " +
-											"`EURODNS_GATE_ADO_SERVICE_CONNECTION_ID` environment variable, for example from a variable " +
+											"`DNS_GATE_ADO_SERVICE_CONNECTION_ID` environment variable, for example from a variable " +
 											"group of the pipeline, so the configuration names no id. Required inside a job, one way or the other.",
 									},
 								},
@@ -263,12 +283,12 @@ func (p *eurodnsProvider) Configure(ctx context.Context, req provider.ConfigureR
 	if s.mode == modeGate {
 		info, err := fetchGateInfo(ctx, client, s.baseURL)
 		if errors.Is(err, errNotGate) {
-			resp.Diagnostics.AddAttributeError(path.Root("gate").AtName("url"), "Not an eurodns-gate",
-				fmt.Sprintf("%s does not serve %s. Point gate.url at an eurodns-gate instance, or use app_id/api_key to talk to EuroDNS directly.", s.baseURL, gateInfoPath))
+			resp.Diagnostics.AddAttributeError(path.Root("gate").AtName("url"), "Not a dns-gate",
+				fmt.Sprintf("%s does not serve %s. Point gate.url at a dns-gate instance, or use app_id/api_key to talk to EuroDNS directly.", s.baseURL, gateInfoPath))
 			return
 		}
 		if err != nil {
-			addAPIError(&resp.Diagnostics, "Cannot reach the eurodns-gate", err)
+			addAPIError(&resp.Diagnostics, "Cannot reach the dns-gate", err)
 			return
 		}
 		features = info.Features
@@ -317,7 +337,7 @@ func (p *eurodnsProvider) resolve(ctx context.Context, cfg providerModel) (*sett
 			"the gate holds the EuroDNS key, Terraform only sends its own identity")
 	}
 
-	gateURL := os.Getenv(envGateURL)
+	gateURL := gateEnv(envGateURL)
 	if gateInConfig && cfg.Gate.URL.ValueString() != "" {
 		gateURL = cfg.Gate.URL.ValueString()
 	}
@@ -358,7 +378,7 @@ func (p *eurodnsProvider) resolveDirect(cfg providerModel, s *settings) (*settin
 
 func (p *eurodnsProvider) tokenSource(ctx context.Context, a *gateAuthModel) (eurodns.TokenSource, error) {
 	if a == nil {
-		tok, file := os.Getenv(envGateToken), os.Getenv(envGateTokenFile)
+		tok, file := gateEnv(envGateToken), gateEnv(envGateTokenFile)
 		switch {
 		case tok != "" && file != "":
 			return nil, fmt.Errorf("set only one of %s and %s", envGateToken, envGateTokenFile)
@@ -385,7 +405,7 @@ func (p *eurodnsProvider) tokenSource(ctx context.Context, a *gateAuthModel) (eu
 	if a.AzureDevOps != nil {
 		id := a.AzureDevOps.ServiceConnectionID.ValueString()
 		if id == "" {
-			id = os.Getenv(envADOServiceConnectionID)
+			id = gateEnv(envADOServiceConnectionID)
 		}
 		if n > 1 {
 			return nil, errors.New("gate.auth.azure_devops can be combined with at most one of token, token_file, token_command, aws_web_identity, azure_identity")

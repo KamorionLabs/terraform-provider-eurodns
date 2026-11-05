@@ -2,9 +2,9 @@
 # delegation (here its own Azure DevOps service connection).
 provider "eurodns" {
   gate {
-    url = "https://eurodns-gate.example.com"
+    url = "https://dns-gate.example.com"
     auth {
-      azure_devops {} # EURODNS_GATE_ADO_SERVICE_CONNECTION_ID
+      azure_devops {} # DNS_GATE_ADO_SERVICE_CONNECTION_ID
     }
   }
 }
