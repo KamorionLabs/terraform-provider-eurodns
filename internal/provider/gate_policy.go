@@ -193,7 +193,7 @@ func (a *apiClient) requireDelegation(diags *diag.Diagnostics, resourceType stri
 }
 
 func (a *apiClient) gateHTTP() *http.Client {
-	return &http.Client{Transport: a.client.Transport(), Timeout: 60 * time.Second}
+	return &http.Client{Transport: a.client.Transport(), Timeout: gateHTTPTimeout}
 }
 
 // gateDo sends one request to the gate policy API and decodes the answer.

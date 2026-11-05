@@ -172,7 +172,7 @@ func (a *apiClient) adopt(ctx context.Context, zoneName string, req eurodns.Adop
 	waiter := a.lockRetry.start("adopt", zoneName)
 	for {
 		hint := &retryAfterHint{}
-		err := a.client.Adopt(withRetryAfterHint(ctx, hint), zoneName, req)
+		err := a.gateAdopt(withRetryAfterHint(ctx, hint), zoneName, req)
 		if err == nil || !isZoneLocked(err) {
 			return err
 		}

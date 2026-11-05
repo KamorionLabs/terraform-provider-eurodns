@@ -261,10 +261,10 @@ func (p *eurodnsProvider) Configure(ctx context.Context, req provider.ConfigureR
 
 	var features []string
 	if s.mode == modeGate {
-		info, err := client.GateInfo(ctx)
-		if errors.Is(err, eurodns.ErrNotGate) {
+		info, err := fetchGateInfo(ctx, client, s.baseURL)
+		if errors.Is(err, errNotGate) {
 			resp.Diagnostics.AddAttributeError(path.Root("gate").AtName("url"), "Not an eurodns-gate",
-				fmt.Sprintf("%s does not serve %s. Point gate.url at an eurodns-gate instance, or use app_id/api_key to talk to EuroDNS directly.", s.baseURL, eurodns.GateInfoPath))
+				fmt.Sprintf("%s does not serve %s. Point gate.url at an eurodns-gate instance, or use app_id/api_key to talk to EuroDNS directly.", s.baseURL, gateInfoPath))
 			return
 		}
 		if err != nil {
