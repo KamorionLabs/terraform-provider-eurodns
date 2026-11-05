@@ -147,6 +147,13 @@ See the gate's [onboarding guide](https://github.com/KamorionLabs/dns-gate/blob/
 
 ## Gate roles and bindings
 
+> `eurodns_gate_role` and `eurodns_gate_binding` are **deprecated** in favour of
+> `dnsgate_role` and `dnsgate_binding` of the
+> [KamorionLabs/dnsgate](https://github.com/KamorionLabs/terraform-provider-dnsgate)
+> provider, which manages the gate policy whatever the DNS provider behind the gate.
+> They keep working; see the [delegation guide](docs/guides/gate-delegation.md#migrating-to-the-dnsgate-provider)
+> to move them without recreating the gate objects.
+
 A stack that creates CI pipelines can create, in the same apply, each pipeline's gate
 role and binding, the way it creates each pipeline's cloud role and scoped policy:
 

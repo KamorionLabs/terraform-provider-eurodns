@@ -143,7 +143,12 @@ func (r *gateRoleResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "A role of the dns-gate managed policy, owned by a policy delegation of the gate (gate mode only). " +
 			"The gate validates it against the delegation of the provider identity and activates the change at once, " +
-			"without approval. Bind it with `eurodns_gate_binding`.",
+			"without approval. Bind it with `eurodns_gate_binding`.\n\n" +
+			"~> **Deprecated:** gate policy objects now belong to the `dnsgate_role` resource of the " +
+			"[KamorionLabs/dnsgate](https://github.com/KamorionLabs/terraform-provider-dnsgate) provider, " +
+			"which works with every DNS provider of dns-gate. This resource keeps working.",
+		DeprecationMessage: "Use dnsgate_role of the KamorionLabs/dnsgate provider. The gate object stays the same: " +
+			"forget it here with a removed block (lifecycle { destroy = false }) and import it into dnsgate_role by name.",
 		Attributes: attrs,
 	}
 }

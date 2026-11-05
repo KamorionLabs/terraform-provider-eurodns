@@ -19,6 +19,11 @@ gate (see the gate documentation on Azure DevOps OIDC).
 The two resources only work in gate mode and need a dns-gate that serves the delegation API (feature
 `policy-delegation`).
 
+~> **Deprecated:** `eurodns_gate_role` and `eurodns_gate_binding` are superseded by `dnsgate_role` and
+`dnsgate_binding` of the [KamorionLabs/dnsgate](https://github.com/KamorionLabs/terraform-provider-dnsgate)
+provider, which manages the gate policy whatever the DNS provider behind the gate. They keep working; see
+[Migrating to the dnsgate provider](#migrating-to-the-dnsgate-provider).
+
 ## How the gate trusts the stack
 
 The gate administrators declare a **delegation** in the gate configuration file (`policy.delegations`, see
@@ -184,3 +189,28 @@ else.
 - Writes that race with other policy changes on the gate (several replicas) are retried by the gate, then by
   the provider (`409 policy_busy`).
 - Deleting the binding removes the pipeline's gate identity at once; RRsets it owns stay owned by its team.
+
+## Migrating to the dnsgate provider
+
+The gate objects do not change: only the Terraform resource that owns them does. In the same apply, forget
+each object here without deleting it and import it into the new resource by name (Terraform 1.7+ or
+OpenTofu 1.7+):
+
+```hcl
+removed {
+  from = eurodns_gate_role.this
+  lifecycle { destroy = false }
+}
+
+import {
+  to = dnsgate_role.this
+  id = "dns-gate-web"
+}
+
+resource "dnsgate_role" "this" {
+  # same arguments as the eurodns_gate_role it replaces
+}
+```
+
+Do the same for each `eurodns_gate_binding` with `dnsgate_binding`. The first plan must show only the
+imports and forgets, and no change.

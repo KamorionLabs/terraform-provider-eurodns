@@ -4,11 +4,14 @@ page_title: "eurodns_gate_binding Resource - eurodns"
 subcategory: ""
 description: |-
   A binding of the dns-gate managed policy, owned by a policy delegation of the gate (gate mode only): it grants a role, acting for a team, to identities. The gate validates it against the delegation of the provider identity and activates the change at once, without approval.
+  ~> Deprecated: gate policy objects now belong to the dnsgate_binding resource of the KamorionLabs/dnsgate https://github.com/KamorionLabs/terraform-provider-dnsgate provider, which works with every DNS provider of dns-gate. This resource keeps working.
 ---
 
 # eurodns_gate_binding (Resource)
 
 A binding of the dns-gate managed policy, owned by a policy delegation of the gate (gate mode only): it grants a role, acting for a team, to identities. The gate validates it against the delegation of the provider identity and activates the change at once, without approval.
+
+~> **Deprecated:** gate policy objects now belong to the `dnsgate_binding` resource of the [KamorionLabs/dnsgate](https://github.com/KamorionLabs/terraform-provider-dnsgate) provider, which works with every DNS provider of dns-gate. This resource keeps working.
 
 ## Example Usage
 

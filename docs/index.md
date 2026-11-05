@@ -22,7 +22,9 @@ the same resource ids. RRsets created in direct mode are foreign to the gate and
 
 The gate was formerly named eurodns-gate. The provider only recognizes a gate that serves
 `/.well-known/dns-gate`, so upgrade the gate first. The `DNS_GATE_*` environment variables replace the
-`EURODNS_GATE_*` ones, which are still read when the new ones are unset.
+`EURODNS_GATE_*` ones, which are still read when the new ones are unset. `eurodns_gate_role` and
+`eurodns_gate_binding` are deprecated in favour of `dnsgate_role` and `dnsgate_binding` of the
+[KamorionLabs/dnsgate](https://github.com/KamorionLabs/terraform-provider-dnsgate) provider.
 
 ## Rate limit
 
