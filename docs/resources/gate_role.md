@@ -3,12 +3,15 @@
 page_title: "eurodns_gate_role Resource - eurodns"
 subcategory: ""
 description: |-
-  A role of the eurodns-gate managed policy, owned by a policy delegation of the gate (gate mode only). The gate validates it against the delegation of the provider identity and activates the change at once, without approval. Bind it with eurodns_gate_binding.
+  A role of the dns-gate managed policy, owned by a policy delegation of the gate (gate mode only). The gate validates it against the delegation of the provider identity and activates the change at once, without approval. Bind it with eurodns_gate_binding.
+  ~> Deprecated: gate policy objects now belong to the dnsgate_role resource of the KamorionLabs/dnsgate https://github.com/KamorionLabs/terraform-provider-dnsgate provider, which works with every DNS provider of dns-gate. This resource keeps working.
 ---
 
 # eurodns_gate_role (Resource)
 
-A role of the eurodns-gate managed policy, owned by a policy delegation of the gate (gate mode only). The gate validates it against the delegation of the provider identity and activates the change at once, without approval. Bind it with `eurodns_gate_binding`.
+A role of the dns-gate managed policy, owned by a policy delegation of the gate (gate mode only). The gate validates it against the delegation of the provider identity and activates the change at once, without approval. Bind it with `eurodns_gate_binding`.
+
+~> **Deprecated:** gate policy objects now belong to the `dnsgate_role` resource of the [KamorionLabs/dnsgate](https://github.com/KamorionLabs/terraform-provider-dnsgate) provider, which works with every DNS provider of dns-gate. This resource keeps working.
 
 ## Example Usage
 
@@ -16,7 +19,7 @@ A role of the eurodns-gate managed policy, owned by a policy delegation of the g
 # Gate mode only. The provider identity must be a subject of a policy
 # delegation of the gate (policy.delegations); the role must stay within it.
 resource "eurodns_gate_role" "web" {
-  name        = "eurodns-gate-web"
+  name        = "dns-gate-web"
   description = "DNS names of the web pipeline"
   rules = [{
     zones   = ["example.com"]
@@ -70,5 +73,5 @@ The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/c
 ```shell
 # By name. Only roles owned by a delegation of the provider identity can be
 # imported (delegated roles).
-terraform import eurodns_gate_role.web eurodns-gate-web
+terraform import eurodns_gate_role.web dns-gate-web
 ```

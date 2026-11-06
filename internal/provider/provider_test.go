@@ -37,6 +37,9 @@ func TestMain(m *testing.M) {
 func clearEnv(t *testing.T) {
 	for _, k := range []string{envAppID, envAPIKey, envBaseURL, envGateURL, envGateToken, envGateTokenFile, envADOOIDCRequestURI, envADOAccessToken, envADOServiceConnectionID} {
 		t.Setenv(k, "")
+		if legacy, ok := legacyGateEnv[k]; ok {
+			t.Setenv(legacy, "")
+		}
 	}
 }
 
@@ -457,7 +460,7 @@ func TestAccProvider_gateURLIsNotAGate(t *testing.T) {
 		ProtoV6ProviderFactories: testProviders,
 		Steps: []resource.TestStep{{
 			Config:      gateProvider(up.URL) + `data "eurodns_zone" "z" { zone = "example.com" }`,
-			ExpectError: regexp.MustCompile(`Not an eurodns-gate`),
+			ExpectError: regexp.MustCompile(`Not a dns-gate`),
 		}},
 	})
 }

@@ -11,7 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
-const pipelineSC = "sc://org/project/eurodns-gate-x"
+const pipelineSC = "sc://org/project/dns-gate-x"
 
 func policyGate(t *testing.T) *fakeGate {
 	t.Helper()
@@ -29,7 +29,7 @@ func fastDelegatedRetry(t *testing.T) {
 func gateRoleTF(hosts string) string {
 	return fmt.Sprintf(`
 resource "eurodns_gate_role" "x" {
-  name        = "eurodns-gate-x"
+  name        = "dns-gate-x"
   description = "DNS names of pipeline x"
   rules = [{
     zones   = ["example.com"]
@@ -43,9 +43,9 @@ resource "eurodns_gate_role" "x" {
 
 const gateBindingTF = `
 resource "eurodns_gate_binding" "x" {
-  name = "eurodns-gate-x"
+  name = "dns-gate-x"
   role = eurodns_gate_role.x.name
-  team = "eurodns-gate-x"
+  team = "dns-gate-x"
   subjects = [{
     issuer = "azure-devops"
     claims = { sub = ["` + pipelineSC + `"] }
@@ -78,15 +78,15 @@ func TestAccGateRoleAndBinding(t *testing.T) {
 			{
 				Config: p + gateRoleTF(`"x.apps"`) + gateBindingTF,
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("eurodns_gate_role.x", "id", "eurodns-gate-x"),
+					resource.TestCheckResourceAttr("eurodns_gate_role.x", "id", "dns-gate-x"),
 					resource.TestCheckResourceAttr("eurodns_gate_role.x", "delegation", "ci"),
 					resource.TestCheckResourceAttr("eurodns_gate_role.x", "rebase_on_save", "false"),
 					resource.TestCheckResourceAttr("eurodns_gate_role.x", "max_changes_per_request", "0"),
 					resource.TestCheckResourceAttrSet("eurodns_gate_role.x", "etag"),
-					resource.TestCheckResourceAttr("eurodns_gate_binding.x", "team", "eurodns-gate-x"),
+					resource.TestCheckResourceAttr("eurodns_gate_binding.x", "team", "dns-gate-x"),
 					resource.TestCheckResourceAttr("eurodns_gate_binding.x", "subjects.0.claims.sub.0", pipelineSC),
 					checkFake(g, func(p *fakePolicy) error {
-						role := p.objects["role/eurodns-gate-x"]
+						role := p.objects["role/dns-gate-x"]
 						if role == nil || role.Role.Rules[0].Records == nil || role.Role.Rules[0].Records.Hosts[0] != "x.apps" {
 							return fmt.Errorf("role in the gate: %+v", role)
 						}
@@ -107,7 +107,7 @@ func TestAccGateRoleAndBinding(t *testing.T) {
 					},
 				},
 				Check: checkFake(g, func(p *fakePolicy) error {
-					if hosts := p.objects["role/eurodns-gate-x"].Role.Rules[0].Records.Hosts; len(hosts) != 2 || p.ifMatch != 1 {
+					if hosts := p.objects["role/dns-gate-x"].Role.Rules[0].Records.Hosts; len(hosts) != 2 || p.ifMatch != 1 {
 						return fmt.Errorf("update: hosts %v, if-match %d", hosts, p.ifMatch)
 					}
 					return nil
@@ -118,7 +118,7 @@ func TestAccGateRoleAndBinding(t *testing.T) {
 				PreConfig: func() {
 					g.mu.Lock()
 					defer g.mu.Unlock()
-					obj := g.policy.objects["role/eurodns-gate-x"]
+					obj := g.policy.objects["role/dns-gate-x"]
 					obj.Role.Rules[0].Actions = []string{"dns.read"}
 					obj.ETag = `"drifted"`
 				},
@@ -127,7 +127,7 @@ func TestAccGateRoleAndBinding(t *testing.T) {
 					PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction("eurodns_gate_role.x", plancheck.ResourceActionUpdate)},
 				},
 				Check: checkFake(g, func(p *fakePolicy) error {
-					if a := p.objects["role/eurodns-gate-x"].Role.Rules[0].Actions; len(a) != 2 {
+					if a := p.objects["role/dns-gate-x"].Role.Rules[0].Actions; len(a) != 2 {
 						return fmt.Errorf("drift not corrected: %v", a)
 					}
 					return nil
@@ -138,15 +138,15 @@ func TestAccGateRoleAndBinding(t *testing.T) {
 				PreConfig: func() {
 					g.mu.Lock()
 					defer g.mu.Unlock()
-					delete(g.policy.objects, "binding/eurodns-gate-x")
+					delete(g.policy.objects, "binding/dns-gate-x")
 				},
 				Config: p + gateRoleTF(`"x.apps", "_acme-challenge.x.apps"`) + gateBindingTF,
 				ConfigPlanChecks: resource.ConfigPlanChecks{
 					PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction("eurodns_gate_binding.x", plancheck.ResourceActionCreate)},
 				},
 			},
-			{ResourceName: "eurodns_gate_role.x", ImportState: true, ImportStateId: "eurodns-gate-x", ImportStateVerify: true},
-			{ResourceName: "eurodns_gate_binding.x", ImportState: true, ImportStateId: "eurodns-gate-x", ImportStateVerify: true},
+			{ResourceName: "eurodns_gate_role.x", ImportState: true, ImportStateId: "dns-gate-x", ImportStateVerify: true},
+			{ResourceName: "eurodns_gate_binding.x", ImportState: true, ImportStateId: "dns-gate-x", ImportStateVerify: true},
 		},
 	})
 }
@@ -164,11 +164,11 @@ resource "eurodns_gate_binding" "all" {
   role = "pipeline-writer"
   team_from = {
     claim = "sub"
-    regex = "^sc://[^/]+/[^/]+/(eurodns-gate-[a-z0-9-]+)$"
+    regex = "^sc://[^/]+/[^/]+/(dns-gate-[a-z0-9-]+)$"
   }
   subjects = [{
     issuer = "azure-devops"
-    claims = { sub = ["sc://org/project/eurodns-gate-*"] }
+    claims = { sub = ["sc://org/project/dns-gate-*"] }
   }]
   groups = ["release-pipelines"]
 }
@@ -199,7 +199,7 @@ func TestAccGateRoleBusyRetried(t *testing.T) {
 		Steps: []resource.TestStep{{
 			Config: gateProvider(g.URL) + gateRoleTF(`"x.apps"`),
 			Check: checkFake(g, func(p *fakePolicy) error {
-				if p.busyRefusals != 3 || p.objects["role/eurodns-gate-x"] == nil {
+				if p.busyRefusals != 3 || p.objects["role/dns-gate-x"] == nil {
 					return fmt.Errorf("busy refusals %d", p.busyRefusals)
 				}
 				return nil
@@ -228,7 +228,7 @@ resource "eurodns_gate_role" "o" {
 				PreConfig: func() {
 					g.mu.Lock()
 					defer g.mu.Unlock()
-					g.policy.objects["role/eurodns-gate-x"] = &gateObject{Kind: "role", Name: "eurodns-gate-x", Role: &gateRole{Rules: []gateRule{{Zones: []string{"example.com"}, Actions: []string{"dns.read"}}}}, Owner: gateOwner{Delegation: "ci"}, ETag: `"other"`}
+					g.policy.objects["role/dns-gate-x"] = &gateObject{Kind: "role", Name: "dns-gate-x", Role: &gateRole{Rules: []gateRule{{Zones: []string{"example.com"}, Actions: []string{"dns.read"}}}}, Owner: gateOwner{Delegation: "ci"}, ETag: `"other"`}
 				},
 				Config:      p + gateRoleTF(`"x.apps"`),
 				ExpectError: regexp.MustCompile(`already exists[\s\S]*terraform import`),

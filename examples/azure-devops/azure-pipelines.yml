@@ -1,7 +1,7 @@
 # Azure DevOps: the job requests an OIDC token for the service connection of the
 # provider. The connection must be authorized for this pipeline, and
 # System.AccessToken must be mapped into the step environment. The connection id
-# can come from a variable group (EURODNS_GATE_ADO_SERVICE_CONNECTION_ID), so the
+# can come from a variable group (DNS_GATE_ADO_SERVICE_CONNECTION_ID), so the
 # Terraform configuration names no id.
 trigger: none
 
@@ -9,7 +9,7 @@ pool:
   vmImage: ubuntu-latest
 
 variables:
-  - group: eurodns-gate-dns # EURODNS_GATE_ADO_SERVICE_CONNECTION_ID
+  - group: dns-gate-dns # DNS_GATE_ADO_SERVICE_CONNECTION_ID
 
 steps:
   - script: |

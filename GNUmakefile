@@ -8,7 +8,7 @@ lint:
 	go vet ./...
 
 # Unit and acceptance tests run against in-memory fakes of EuroDNS and
-# eurodns-gate: no credentials and no network access to EuroDNS are needed.
+# dns-gate: no credentials and no network access to EuroDNS are needed.
 test:
 	go test -count=1 ./...
 

@@ -47,7 +47,9 @@ func gateAPI(t *testing.T, g *fakeGate) *apiClient {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return newAPIClient(c, modeGate, g.features)
+	api := newAPIClient(c, modeGate, g.features)
+	api.baseURL = g.URL
+	return api
 }
 
 func createTXT(api *apiClient, host, value string) error {

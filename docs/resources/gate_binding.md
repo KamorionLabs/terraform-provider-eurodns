@@ -3,12 +3,15 @@
 page_title: "eurodns_gate_binding Resource - eurodns"
 subcategory: ""
 description: |-
-  A binding of the eurodns-gate managed policy, owned by a policy delegation of the gate (gate mode only): it grants a role, acting for a team, to identities. The gate validates it against the delegation of the provider identity and activates the change at once, without approval.
+  A binding of the dns-gate managed policy, owned by a policy delegation of the gate (gate mode only): it grants a role, acting for a team, to identities. The gate validates it against the delegation of the provider identity and activates the change at once, without approval.
+  ~> Deprecated: gate policy objects now belong to the dnsgate_binding resource of the KamorionLabs/dnsgate https://github.com/KamorionLabs/terraform-provider-dnsgate provider, which works with every DNS provider of dns-gate. This resource keeps working.
 ---
 
 # eurodns_gate_binding (Resource)
 
-A binding of the eurodns-gate managed policy, owned by a policy delegation of the gate (gate mode only): it grants a role, acting for a team, to identities. The gate validates it against the delegation of the provider identity and activates the change at once, without approval.
+A binding of the dns-gate managed policy, owned by a policy delegation of the gate (gate mode only): it grants a role, acting for a team, to identities. The gate validates it against the delegation of the provider identity and activates the change at once, without approval.
+
+~> **Deprecated:** gate policy objects now belong to the `dnsgate_binding` resource of the [KamorionLabs/dnsgate](https://github.com/KamorionLabs/terraform-provider-dnsgate) provider, which works with every DNS provider of dns-gate. This resource keeps working.
 
 ## Example Usage
 
@@ -17,26 +20,26 @@ A binding of the eurodns-gate managed policy, owned by a policy delegation of th
 # The team is the one the delegation derives from the subject
 # (allow.teams.from_subject), so the pipeline owns the RRsets it creates.
 resource "eurodns_gate_binding" "web" {
-  name = "eurodns-gate-web"
+  name = "dns-gate-web"
   role = eurodns_gate_role.web.name
-  team = "eurodns-gate-web"
+  team = "dns-gate-web"
   subjects = [{
     issuer = "azure-devops"
-    claims = { sub = ["sc://org/project/eurodns-gate-web"] }
+    claims = { sub = ["sc://org/project/dns-gate-web"] }
   }]
 }
 
 # Same, deriving the team from the token of each subject instead.
 resource "eurodns_gate_binding" "web_team_from" {
-  name = "eurodns-gate-web-derived"
+  name = "dns-gate-web-derived"
   role = eurodns_gate_role.web.name
   team_from = {
     claim = "sub"
-    regex = "^sc://[^/]+/[^/]+/(eurodns-gate-[a-z0-9-]+)$"
+    regex = "^sc://[^/]+/[^/]+/(dns-gate-[a-z0-9-]+)$"
   }
   subjects = [{
     issuer = "azure-devops"
-    claims = { sub = ["sc://org/project/eurodns-gate-web"] }
+    claims = { sub = ["sc://org/project/dns-gate-web"] }
   }]
 }
 ```
@@ -67,7 +70,7 @@ resource "eurodns_gate_binding" "web_team_from" {
 
 Required:
 
-- `claims` (Map of List of String) Claim name to accepted globs, for example `{ sub = ["sc://org/project/eurodns-gate-web"] }`.
+- `claims` (Map of List of String) Claim name to accepted globs, for example `{ sub = ["sc://org/project/dns-gate-web"] }`.
 - `issuer` (String) Issuer name in the gate configuration (`issuers[].name`).
 
 
@@ -91,5 +94,5 @@ The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/c
 
 ```shell
 # By name (delegated bindings only).
-terraform import eurodns_gate_binding.web eurodns-gate-web
+terraform import eurodns_gate_binding.web dns-gate-web
 ```

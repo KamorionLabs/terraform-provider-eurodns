@@ -1,7 +1,7 @@
 ---
 page_title: "EuroDNS Provider"
 description: |-
-  Manage DNS records hosted at EuroDNS, directly or through eurodns-gate.
+  Manage DNS records hosted at EuroDNS, directly or through dns-gate.
 ---
 
 # EuroDNS Provider
@@ -14,11 +14,17 @@ One provider, two modes, the same resources:
 | Mode | Configuration | Credentials held by | Guarantees |
 |------|---------------|---------------------|------------|
 | Direct | `app_id` / `api_key` | Terraform | Records outside the configuration are written back unchanged; per-process write serialization only |
-| Gate | `gate` block | [eurodns-gate](https://github.com/KamorionLabs/eurodns-gate) | OIDC identity, RBAC per zone/name/type, the gate only changes RRsets it created or adopted, zone-level concurrency control |
+| Gate | `gate` block | [dns-gate](https://github.com/KamorionLabs/dns-gate) | OIDC identity, RBAC per zone/name/type, the gate only changes RRsets it created or adopted, zone-level concurrency control |
 
 The two modes are mutually exclusive. Switching mode only changes the provider block: the state keeps
 the same resource ids. RRsets created in direct mode are foreign to the gate and must be adopted
 (by importing them in gate mode) before the gate lets Terraform change them.
+
+The gate was formerly named eurodns-gate. The provider only recognizes a gate that serves
+`/.well-known/dns-gate`, so upgrade the gate first. The `DNS_GATE_*` environment variables replace the
+`EURODNS_GATE_*` ones, which are still read when the new ones are unset. `eurodns_gate_role` and
+`eurodns_gate_binding` are deprecated in favour of `dnsgate_role` and `dnsgate_binding` of the
+[KamorionLabs/dnsgate](https://github.com/KamorionLabs/terraform-provider-dnsgate) provider.
 
 ## Rate limit
 
@@ -52,26 +58,26 @@ provider "eurodns" {
 ## Example: gate mode
 
 ```terraform
-# Gate mode: the provider talks to an eurodns-gate, which holds the EuroDNS
+# Gate mode: the provider talks to a dns-gate, which holds the EuroDNS
 # key and enforces RBAC and record ownership. Terraform only proves its
 # identity, here with a JWT signed by AWS STS for the current IAM role.
 provider "eurodns" {
   gate {
-    url = "https://eurodns-gate.example.com" # or EURODNS_GATE_URL
+    url = "https://dns-gate.example.com" # or DNS_GATE_URL
 
     auth {
       aws_web_identity {
-        audience = "eurodns-gate"
+        audience = "dns-gate"
       }
     }
   }
 }
 
 # Other authentication methods, exactly one per provider:
-#   auth { token_file    = "/var/run/secrets/tokens/eurodns-gate" }
-#   auth { token_command = ["my-oidc-helper", "--audience", "eurodns-gate"] }
+#   auth { token_file    = "/var/run/secrets/tokens/dns-gate" }
+#   auth { token_command = ["my-oidc-helper", "--audience", "dns-gate"] }
 #   auth { token         = var.gate_token }
-# Without an auth block, EURODNS_GATE_TOKEN or EURODNS_GATE_TOKEN_FILE is used.
+# Without an auth block, DNS_GATE_TOKEN or DNS_GATE_TOKEN_FILE is used.
 ```
 
 Other methods (`azure_identity`, `token_file`, `token_command`, `token`) are described in the
@@ -85,7 +91,7 @@ Other methods (`azure_identity`, `token_file`, `token_command`, `token`) are des
 - `api_key` (String, Sensitive) Direct mode: EuroDNS API key (`X-API-KEY`). Env: `EURODNS_API_KEY`.
 - `app_id` (String) Direct mode: EuroDNS application id (`X-APP-ID`). Env: `EURODNS_APP_ID`.
 - `base_url` (String) Direct mode: API endpoint. Default `https://rest-api.eurodns.com`. Env: `EURODNS_BASE_URL`.
-- `gate` (Block, Optional) Gate mode: talk to an eurodns-gate instead of EuroDNS. Mutually exclusive with `app_id`/`api_key`. (see [below for nested schema](#nestedblock--gate))
+- `gate` (Block, Optional) Gate mode: talk to a dns-gate instead of EuroDNS. Mutually exclusive with `app_id`/`api_key`. (see [below for nested schema](#nestedblock--gate))
 - `max_retries` (Number) Retries on rate limiting and transient errors. Default 4.
 - `request_burst` (Number) Requests allowed in a burst before `request_interval` applies. Default 5.
 - `request_interval` (String) Minimum interval between two API requests, as a Go duration. Default `1.1s`: EuroDNS allows 10 requests per 10 seconds per IP and bans offenders progressively.
@@ -95,8 +101,8 @@ Other methods (`azure_identity`, `token_file`, `token_command`, `token`) are des
 
 Optional:
 
-- `auth` (Block, Optional) How to obtain the bearer token sent to the gate. Exactly one method, plus optionally `azure_devops`, which takes precedence inside an Azure DevOps job. Without this block, `EURODNS_GATE_TOKEN` or `EURODNS_GATE_TOKEN_FILE` is used. (see [below for nested schema](#nestedblock--gate--auth))
-- `url` (String) eurodns-gate base URL. Env: `EURODNS_GATE_URL`.
+- `auth` (Block, Optional) How to obtain the bearer token sent to the gate. Exactly one method, plus optionally `azure_devops`, which takes precedence inside an Azure DevOps job. Without this block, `DNS_GATE_TOKEN` or `DNS_GATE_TOKEN_FILE` is used. (see [below for nested schema](#nestedblock--gate--auth))
+- `url` (String) dns-gate base URL. Env: `DNS_GATE_URL`.
 
 <a id="nestedblock--gate--auth"></a>
 ### Nested Schema for `gate.auth`
@@ -126,7 +132,7 @@ Optional:
 
 Optional:
 
-- `service_connection_id` (String) Id of the service connection the token is issued for. Defaults to the `EURODNS_GATE_ADO_SERVICE_CONNECTION_ID` environment variable, for example from a variable group of the pipeline, so the configuration names no id. Required inside a job, one way or the other.
+- `service_connection_id` (String) Id of the service connection the token is issued for. Defaults to the `DNS_GATE_ADO_SERVICE_CONNECTION_ID` environment variable, for example from a variable group of the pipeline, so the configuration names no id. Required inside a job, one way or the other.
 
 
 <a id="nestedblock--gate--auth--azure_identity"></a>
@@ -135,5 +141,5 @@ Optional:
 Optional:
 
 - `client_id` (String) Client id of a user-assigned managed identity or workload identity.
-- `scope` (String) Scope of the gate application, for example `api://eurodns-gate/.default`. Required in this block.
+- `scope` (String) Scope of the gate application, for example `api://dns-gate/.default`. Required in this block.
 - `tenant_id` (String) Entra tenant. Default: from the environment or the Azure CLI login.

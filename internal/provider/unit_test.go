@@ -103,14 +103,14 @@ func (f *fakeSTS) GetWebIdentityToken(_ context.Context, in *sts.GetWebIdentityT
 func TestAWSWebIdentityToken(t *testing.T) {
 	fake := &fakeSTS{exp: time.Now().Add(time.Hour)}
 	src := newCachingTokenSource(awsWebIdentityFetch(
-		awsWebIdentityConfig{Audience: "eurodns-gate", SigningAlgorithm: "ES384", DurationSeconds: 900},
+		awsWebIdentityConfig{Audience: "dns-gate", SigningAlgorithm: "ES384", DurationSeconds: 900},
 		func(context.Context) (stsTokenAPI, error) { return fake, nil },
 	))
 	tok, err := src.Token(context.Background())
 	if err != nil || tok != "aws-jwt" {
 		t.Fatalf("token %q, err %v", tok, err)
 	}
-	if fake.in.Audience[0] != "eurodns-gate" || *fake.in.SigningAlgorithm != "ES384" || *fake.in.DurationSeconds != 900 {
+	if fake.in.Audience[0] != "dns-gate" || *fake.in.SigningAlgorithm != "ES384" || *fake.in.DurationSeconds != 900 {
 		t.Fatalf("unexpected input %+v", fake.in)
 	}
 }
@@ -130,6 +130,20 @@ func TestResolveModes(t *testing.T) {
 		s, err := p.resolve(ctx, null)
 		if err != nil || s.mode != modeGate || s.baseURL != "https://gate.example.com" {
 			t.Fatalf("settings %+v, err %v", s, err)
+		}
+	})
+	t.Run("legacy EURODNS_GATE_ variables", func(t *testing.T) {
+		clearEnv(t)
+		t.Setenv("EURODNS_GATE_URL", "https://legacy.example.com")
+		t.Setenv("EURODNS_GATE_TOKEN", "t")
+		s, err := p.resolve(ctx, null)
+		if err != nil || s.mode != modeGate || s.baseURL != "https://legacy.example.com" {
+			t.Fatalf("settings %+v, err %v", s, err)
+		}
+		t.Setenv(envGateURL, "https://gate.example.com")
+		s, err = p.resolve(ctx, null)
+		if err != nil || s.baseURL != "https://gate.example.com" {
+			t.Fatalf("DNS_GATE_URL must win: settings %+v, err %v", s, err)
 		}
 	})
 	t.Run("env direct mode", func(t *testing.T) {

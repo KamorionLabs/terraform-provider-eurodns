@@ -16,13 +16,13 @@ variable "organization" { type = string }
 variable "pipeline_id" { type = number }
 variable "name" {
   type        = string
-  description = "Pipeline short name: the service connection is eurodns-gate-<name>."
+  description = "Pipeline short name: the service connection is dns-gate-<name>."
 }
 variable "zone" { type = string }
 variable "hosts" { type = list(string) }
 
 locals {
-  connection = "eurodns-gate-${var.name}"
+  connection = "dns-gate-${var.name}"
   subject    = "sc://${var.organization}/${var.project_name}/${local.connection}"
 }
 
@@ -31,8 +31,8 @@ locals {
 resource "azuredevops_serviceendpoint_generic" "gate" {
   project_id            = var.project_id
   service_endpoint_name = local.connection
-  server_url            = "https://eurodns-gate.example.com"
-  description           = "eurodns-gate identity of pipeline ${var.name}"
+  server_url            = "https://dns-gate.example.com"
+  description           = "dns-gate identity of pipeline ${var.name}"
 }
 
 resource "azuredevops_pipeline_authorization" "gate" {

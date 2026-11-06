@@ -94,7 +94,7 @@ func (r *gateBindingResource) Schema(_ context.Context, _ resource.SchemaRequest
 			"claims": schema.MapAttribute{
 				Required:            true,
 				ElementType:         types.ListType{ElemType: types.StringType},
-				MarkdownDescription: "Claim name to accepted globs, for example `{ sub = [\"sc://org/project/eurodns-gate-web\"] }`.",
+				MarkdownDescription: "Claim name to accepted globs, for example `{ sub = [\"sc://org/project/dns-gate-web\"] }`.",
 				Validators:          []validator.Map{mapvalidator.SizeAtLeast(1)},
 			},
 		}},
@@ -106,9 +106,14 @@ func (r *gateBindingResource) Schema(_ context.Context, _ resource.SchemaRequest
 		Validators:          []validator.List{listvalidator.SizeAtLeast(1)},
 	}
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "A binding of the eurodns-gate managed policy, owned by a policy delegation of the gate " +
+		MarkdownDescription: "A binding of the dns-gate managed policy, owned by a policy delegation of the gate " +
 			"(gate mode only): it grants a role, acting for a team, to identities. The gate validates it against the " +
-			"delegation of the provider identity and activates the change at once, without approval.",
+			"delegation of the provider identity and activates the change at once, without approval.\n\n" +
+			"~> **Deprecated:** gate policy objects now belong to the `dnsgate_binding` resource of the " +
+			"[KamorionLabs/dnsgate](https://github.com/KamorionLabs/terraform-provider-dnsgate) provider, " +
+			"which works with every DNS provider of dns-gate. This resource keeps working.",
+		DeprecationMessage: "Use dnsgate_binding of the KamorionLabs/dnsgate provider. The gate object stays the same: " +
+			"forget it here with a removed block (lifecycle { destroy = false }) and import it into dnsgate_binding by name.",
 		Attributes: attrs,
 	}
 }

@@ -22,13 +22,13 @@ import (
 // eurodns_gate_binding.
 const featurePolicyDelegation = "policy-delegation"
 
-// delegatedPath is the delegation API of eurodns-gate.
+// delegatedPath is the delegation API of dns-gate.
 const delegatedPath = "/api/v1/policy/delegated"
 
 // managedBy labels the objects this provider writes in the gate.
 const managedBy = "terraform"
 
-// Gate wire types of the delegation API (see eurodns-gate internal/uiapi).
+// Gate wire types of the delegation API (see dns-gate internal/uiapi).
 
 type gateRecordScope struct {
 	Hosts []string `json:"hosts,omitempty"`
@@ -114,7 +114,7 @@ type gatePolicyError struct {
 }
 
 func (e *gatePolicyError) Error() string {
-	msg := fmt.Sprintf("eurodns-gate: %s %s: status %d", e.Method, e.Path, e.Status)
+	msg := fmt.Sprintf("dns-gate: %s %s: status %d", e.Method, e.Path, e.Status)
 	if e.Reason != "" {
 		msg += ": " + e.Reason
 	}
@@ -181,19 +181,19 @@ var defaultDelegatedRetry = delegatedRetry{attempts: 8, base: 500 * time.Millise
 func (a *apiClient) requireDelegation(diags *diag.Diagnostics, resourceType string) bool {
 	if a.mode != modeGate {
 		diags.AddError(resourceType+" requires gate mode",
-			"This resource manages objects of an eurodns-gate policy: configure the provider with a gate block (or EURODNS_GATE_URL), not app_id/api_key.")
+			"This resource manages objects of a dns-gate policy: configure the provider with a gate block (or DNS_GATE_URL), not app_id/api_key.")
 		return false
 	}
 	if !a.hasFeature(featurePolicyDelegation) {
-		diags.AddError("The eurodns-gate does not serve the delegation API",
-			fmt.Sprintf("%s needs an eurodns-gate that advertises the %q feature (GET /.well-known/eurodns-gate). Upgrade the gate.", resourceType, featurePolicyDelegation))
+		diags.AddError("The dns-gate does not serve the delegation API",
+			fmt.Sprintf("%s needs a dns-gate that advertises the %q feature (GET /.well-known/dns-gate). Upgrade the gate.", resourceType, featurePolicyDelegation))
 		return false
 	}
 	return true
 }
 
 func (a *apiClient) gateHTTP() *http.Client {
-	return &http.Client{Transport: a.client.Transport(), Timeout: 60 * time.Second}
+	return &http.Client{Transport: a.client.Transport(), Timeout: gateHTTPTimeout}
 }
 
 // gateDo sends one request to the gate policy API and decodes the answer.
@@ -244,7 +244,7 @@ func (a *apiClient) gateDo(ctx context.Context, method, path string, hdr http.He
 	}
 	if out != nil && len(bytes.TrimSpace(b)) > 0 {
 		if err := json.Unmarshal(b, out); err != nil {
-			return resp.Header, fmt.Errorf("eurodns-gate: decode %s %s: %w", method, u.Path, err)
+			return resp.Header, fmt.Errorf("dns-gate: decode %s %s: %w", method, u.Path, err)
 		}
 	}
 	return resp.Header, nil

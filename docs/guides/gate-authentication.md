@@ -1,11 +1,11 @@
 ---
-page_title: "Authenticating to eurodns-gate"
+page_title: "Authenticating to dns-gate"
 subcategory: ""
 description: |-
-  Choose how Terraform proves its identity to an eurodns-gate.
+  Choose how Terraform proves its identity to a dns-gate.
 ---
 
-# Authenticating to eurodns-gate
+# Authenticating to dns-gate
 
 In gate mode Terraform never holds the EuroDNS key: it sends a bearer token that the gate verifies
 (issuer, audience, claims) and maps to roles and owner teams. `gate.auth` takes exactly one method, plus optionally `azure_devops`
@@ -25,26 +25,26 @@ Tokens are cached and renewed two minutes before they expire.
 ## AWS
 
 ```terraform
-# Gate mode: the provider talks to an eurodns-gate, which holds the EuroDNS
+# Gate mode: the provider talks to a dns-gate, which holds the EuroDNS
 # key and enforces RBAC and record ownership. Terraform only proves its
 # identity, here with a JWT signed by AWS STS for the current IAM role.
 provider "eurodns" {
   gate {
-    url = "https://eurodns-gate.example.com" # or EURODNS_GATE_URL
+    url = "https://dns-gate.example.com" # or DNS_GATE_URL
 
     auth {
       aws_web_identity {
-        audience = "eurodns-gate"
+        audience = "dns-gate"
       }
     }
   }
 }
 
 # Other authentication methods, exactly one per provider:
-#   auth { token_file    = "/var/run/secrets/tokens/eurodns-gate" }
-#   auth { token_command = ["my-oidc-helper", "--audience", "eurodns-gate"] }
+#   auth { token_file    = "/var/run/secrets/tokens/dns-gate" }
+#   auth { token_command = ["my-oidc-helper", "--audience", "dns-gate"] }
 #   auth { token         = var.gate_token }
-# Without an auth block, EURODNS_GATE_TOKEN or EURODNS_GATE_TOKEN_FILE is used.
+# Without an auth block, DNS_GATE_TOKEN or DNS_GATE_TOKEN_FILE is used.
 ```
 
 ## Microsoft Entra ID
@@ -56,11 +56,11 @@ the Azure CLI login. With `client_id`, the chain is bound to that user-assigned 
 # Gate mode with a Microsoft Entra ID token for the gate application.
 provider "eurodns" {
   gate {
-    url = "https://eurodns-gate.example.com"
+    url = "https://dns-gate.example.com"
 
     auth {
       azure_identity {
-        scope = "api://eurodns-gate/.default"
+        scope = "api://dns-gate/.default"
         # tenant_id = "00000000-0000-0000-0000-000000000000"
         # client_id = "11111111-1111-1111-1111-111111111111" # user-assigned managed identity
       }
@@ -133,7 +133,7 @@ spec:
 `sc://<organization>/<project>/<service connection>`). No cloud login is involved, so it suits pipelines that
 only manage DNS, on any cloud.
 
-The service connection id is `service_connection_id`, or else the `EURODNS_GATE_ADO_SERVICE_CONNECTION_ID`
+The service connection id is `service_connection_id`, or else the `DNS_GATE_ADO_SERVICE_CONNECTION_ID`
 environment variable: a variable group named after the pipeline can carry it, so the configuration and the
 pipeline YAML only use names. It applies inside an Azure DevOps job only. Elsewhere, for example on a workstation, the other method of the
 block is used, typically `azure_identity` with the Azure CLI login of the person running Terraform:
@@ -145,14 +145,14 @@ block is used, typically `azure_identity` with the Azure CLI login of the person
 # Terraform, so the same configuration works in both places.
 provider "eurodns" {
   gate {
-    url = "https://eurodns-gate.example.com"
+    url = "https://dns-gate.example.com"
 
     auth {
-      # service_connection_id defaults to EURODNS_GATE_ADO_SERVICE_CONNECTION_ID,
+      # service_connection_id defaults to DNS_GATE_ADO_SERVICE_CONNECTION_ID,
       # for example from a variable group of the pipeline.
       azure_devops {}
       azure_identity {
-        scope = "api://eurodns-gate/.default"
+        scope = "api://dns-gate/.default"
       }
     }
   }
@@ -163,7 +163,7 @@ provider "eurodns" {
 # Azure DevOps: the job requests an OIDC token for the service connection of the
 # provider. The connection must be authorized for this pipeline, and
 # System.AccessToken must be mapped into the step environment. The connection id
-# can come from a variable group (EURODNS_GATE_ADO_SERVICE_CONNECTION_ID), so the
+# can come from a variable group (DNS_GATE_ADO_SERVICE_CONNECTION_ID), so the
 # Terraform configuration names no id.
 trigger: none
 
@@ -171,7 +171,7 @@ pool:
   vmImage: ubuntu-latest
 
 variables:
-  - group: eurodns-gate-dns # EURODNS_GATE_ADO_SERVICE_CONNECTION_ID
+  - group: dns-gate-dns # DNS_GATE_ADO_SERVICE_CONNECTION_ID
 
 steps:
   - script: |

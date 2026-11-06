@@ -24,7 +24,7 @@ const (
 	testZone   = "example.com"
 )
 
-// fakeGate is a minimal eurodns-gate: bearer auth, ETag/If-Match on zones,
+// fakeGate is a minimal dns-gate: bearer auth, ETag/If-Match on zones,
 // RRset ownership (records seeded upstream are foreign) and adoption.
 type fakeGate struct {
 	*httptest.Server
@@ -86,10 +86,10 @@ func (g *fakeGate) serve(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	switch {
-	case r.Method == http.MethodGet && r.URL.Path == eurodns.GateInfoPath:
+	case r.Method == http.MethodGet && r.URL.Path == gateInfoPath:
 		_ = json.NewEncoder(w).Encode(eurodns.GateInfo{Version: "test", Features: g.features})
 
-	case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, eurodns.GateInfoPath+"/zones/") && strings.HasSuffix(r.URL.Path, "/adopt"):
+	case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, gateInfoPath+"/zones/") && strings.HasSuffix(r.URL.Path, "/adopt"):
 		if g.refuseUnavailable(w) {
 			return
 		}

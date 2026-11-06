@@ -32,7 +32,7 @@ func TestAzureIdentityToken(t *testing.T) {
 	fake := &fakeAzureCredential{exp: time.Now().Add(time.Hour)}
 	var got azureIdentityConfig
 	src := newCachingTokenSource(azureTokenFetch(
-		azureIdentityConfig{Scope: "api://eurodns-gate/.default", TenantID: "tenant", ClientID: "client"},
+		azureIdentityConfig{Scope: "api://dns-gate/.default", TenantID: "tenant", ClientID: "client"},
 		func(c azureIdentityConfig) (azcore.TokenCredential, error) { got = c; return fake, nil },
 	))
 	for i := 0; i < 3; i++ {
@@ -44,7 +44,7 @@ func TestAzureIdentityToken(t *testing.T) {
 	if fake.calls != 1 {
 		t.Fatalf("token not cached: %d calls", fake.calls)
 	}
-	if fake.opts.Scopes[0] != "api://eurodns-gate/.default" || fake.opts.TenantID != "tenant" || got.ClientID != "client" {
+	if fake.opts.Scopes[0] != "api://dns-gate/.default" || fake.opts.TenantID != "tenant" || got.ClientID != "client" {
 		t.Fatalf("unexpected request %+v / %+v", fake.opts, got)
 	}
 }
@@ -88,7 +88,7 @@ func TestResolveAzureIdentity(t *testing.T) {
 	clearEnv(t)
 
 	s, err := p.resolve(ctx, auth(&gateAuthModel{AzureIdentity: &azureIdentityModel{
-		Scope: types.StringValue("api://eurodns-gate/.default"), TenantID: types.StringNull(), ClientID: types.StringNull(),
+		Scope: types.StringValue("api://dns-gate/.default"), TenantID: types.StringNull(), ClientID: types.StringNull(),
 	}}))
 	if err != nil || s.mode != modeGate {
 		t.Fatalf("settings %+v, err %v", s, err)
